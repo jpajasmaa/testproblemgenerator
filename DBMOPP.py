@@ -1,5 +1,23 @@
 import numpy as np
-from desdeo_problem.problem import MOProblem
+#from desdeo_problem.problem import MOProblem
+
+# utilities
+# TODO: figure out the structure
+
+# should probably be inside the dbmopp class..
+def get2DVersion(dbmopp, x) -> float:
+    pass
+
+
+def getMinimumDistancesToAttractors(dbmopp, x) -> list:
+    pass
+
+def getObjectives(dbmopp, x) -> list:
+    pass
+
+
+
+
 
 class DBMOPP:
     """
@@ -61,6 +79,11 @@ class DBMOPP:
         self.vary_objective_scales = vary_objective_scales
         self.prop_neutral = prop_neutral
         self.nm = nm
+
+        # some more attributes
+        self._centre_radii = []
+        self._pareto_set_indices = 0
+        self._centre_list = []
     
     def generate_problem(self):
         """
@@ -91,23 +114,72 @@ class DBMOPP:
         if self.vary_objective_scales:
             self.set_objective_rescaling_variables()
         
-        return MOProblem() # hmmm 
+        return self #MOProblem() # hmmm 
 
     def set_attractor_regions(self):
         """
         Calculate max maximum region radius given problem properties
+
+        This aka setUpAttractorCentres
         """
-        pass
+        # number of local PO sets, global PO sets, dominance resistance regions
+        n = self.nlp + self.ngp + self.ndr 
+        print(n)
+
+        max_radius = 1/(2*np.sqrt(n)+1) * (1 - (self.prop_neutral + self.prop_contraint_checker)) # prop 0 and 0.
+        radius = self.placeRegions(n, max_radius)
+
+        if self.nlp > 0:
+            # TODO: when locals taken into account. Does not work yet
+            self._centre_radii[self.nlp : -1] = radius / 2
+            w = np.linspace(1, 0.5, self.nlp)
+            # linearly decrease local front radii
+            #self._centre_radii[0:self.nlp] = self._centre_radii[0:self.nlp] * w[0:self.nlp]
+
+        # save indices of PO set locations
+        self.pareto_set_indices = self.nlp + self.ngp
+
+        
+
+    
+    def placeRegions(self, n, r):
+        """
+        ignoring the time thingy
+        """
+        effective_bound = 1 - r
+        threshold = 4*r
+        self._centre_list = np.zeros((n,2)) # maybe correct conversion
+        # ignore the time tic whatever
+
+        self._centre_list[0,:] = (np.random.rand(1,2)*2*effective_bound) - effective_bound  #random cordinate pair between -(1-radius) and +(1-radius)
+        print('Radius: ', r)
+
+        for i in np.arange(1, n):
+            invalid = True
+            while invalid:
+                rand_coord = (np.random.rand(1, 2)*2*effective_bound) - effective_bound
+                t = np.min(np.linalg.norm(self._centre_list[0:i,:] - rand_coord))
+                print(t)
+                if t > threshold:
+                    print("assigned centre", i)
+                    invalid = False
+
+            self._centre_list[i,:] = rand_coord
+
 
     def assign_attractor_region_rotations(self):
         """
         Set up rotations to be used by each attractor region
+
+        this obj.ParetoAngles and obj.rotations attributes,
         """
         pass
 
     def place_attractor_points(self):
         """
         Randomly place attractor regions in 2D space
+
+        This placeAttractors.
         """
         pass
 
@@ -235,3 +307,12 @@ class DBMOPP:
             msg += f"Number of samples should be greater than 1000, was {nm}.\n"
         return msg
         
+
+
+if __name__=="__main__":
+    # global PO set style 0.
+    my_instance = DBMOPP(4, 2, 0, 0, 5, 0,1,0,0,False, False, 0)
+    my_instance.generate_problem()
+    print(my_instance._centre_list)
+    print("runs")
+
