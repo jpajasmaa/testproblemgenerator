@@ -7,20 +7,6 @@ from scipy.optimize import linprog
 # utilities
 # TODO: figure out the structure
 
-# here only because attractorRegions won't find it if its defined after attractorRegions
-def convhull(points):
-    """
-    Construct a convex hull of given set of points
-
-    Args:
-        points (np.ndarray): the points used to construct the convex hull
-    
-    Returns:
-        np.ndarray: The indices of the simplices that form the convex hull
-    """
-    hull = ConvexHull(points)
-    return hull.simplices
-
 
 class DBMOPP:
     """
@@ -310,7 +296,7 @@ class DBMOPP:
             self.attractor_regions[i] = {"centre" : self._centre_list[i,:] } # matlab comments these two as duplicate storage.. 
             self.attractor_regions[i] = {"obj_ind" : self._centre_radii[i] }  # we prob should get rid of these later
             # need to feed the points in right shape 
-            #self.attractor_regions[i] = {"convhull" : convhull(locs)}
+            self.attractor_regions[i] = {"convhull" : self.convhull(locs)}
 
             # this has wrong shapes aswell
             for j in np.arange(self.k):
@@ -506,6 +492,20 @@ class DBMOPP:
 
 
     # Methods matlab has built in
+    # here only because attractorRegions won't find it if its defined after attractorRegions
+    def convhull(self,points):
+        """
+        Construct a convex hull of given set of points
+
+        Args:
+            points (np.ndarray): the points used to construct the convex hull
+        
+        Returns:
+            np.ndarray: The indices of the simplices that form the convex hull
+        """
+        hull = ConvexHull(points)
+        return hull.simplices
+
 
 
     
