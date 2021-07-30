@@ -1,14 +1,11 @@
+from typing import Dict, Tuple
 import numpy as np
+from scipy.spatial import ConvexHull
+from scipy.optimize import linprog
 #from desdeo_problem.problem import MOProblem
 
 # utilities
 # TODO: figure out the structure
-
-def getMinimumDistancesToAttractors(dbmopp, x) -> list:
-    pass
-
-def getObjectives(dbmopp, x) -> list:
-    pass
 
 
 
@@ -74,12 +71,19 @@ class DBMOPP:
         self.nm = nm
 
         # Attributes. This is ugly :D Could change it to own class with just attributes. thoughts?
+        self.rescaleConstant = 0 # What the hell is up with these two attributes
+        self.rescaleMultiplier = 1 # They are only used once and even there they do nothing...
+        self.attractors = None # aka attractorsList what is this?
+        self.attractor_regions = None # What is this
         self._pi1 = None
         self._pi2 = None
         self.neutral_region_objective_values = np.sqrt(8)
         self._centre_radii = None
         self._pareto_set_indices = 0
         self._centre_list = None
+
+        self.neutral_region_centres = []
+        self.neutral_region_radii = None
     
     def _validate_args(
         self,
@@ -134,14 +138,81 @@ class DBMOPP:
     
     # HIDDEN METHODS, not really but in MATLAB :D
 
-    def evaluate_2D(self, x):
-        pass
+    def evaluate_2D(self, x) -> Dict:
+        """
+        Evaluate x in problem instance in 2 dimensions
+        
+        Args:
+            x (np.ndarray): The decision vector to be evaluated
+        
+        Returns:
+            Dict: A dictionary object with the following entries:
+                'obj_vector' : np.ndarray, the objective vector
+                'soft_constr_viol' : boolean, soft constraint violation
+                'hard_constr_viol' : boolean, hard constraint violation
+        """
+        ans = {
+            "obj_vector": np.array([None] * self.k),
+            "soft_constr_viol": False,
+            "hard_constr_viol": False,
+        }
+        print("evaluate_2D:")
+        print("This should propably be done with moproblem.evaluate at some point")
+        print("or maybe this can be passed to moproblem...")
+        print("TODO get hard and soft constraint violation, get objectives")
+        print("neutral things not defined\n")
 
-    def is_pareto_2D(self, x):
-        pass
+        if self.get_hard_constraint_violation(x):
+            ans["hard_constr_viol"] = True
+            if self.constraint_type == 3:
+                if self.in_convex_hull_of_attractor_region(x):
+                    ans["hard_constr_viol"] = False
+                    ans["obj_vector"] = self.get_objectives(x)
+            return ans
+        
+        if self.get_soft_constraint_violation(x):
+            ans["soft_constr_viol"] = True
+            if (self.constraint_type == 7):
+                if (self.in_convex_hull_of_attractor_region(x)):
+                    ans["soft_constr_viol"] = False
+                    ans["obj_vector"] = self.get_objectives(x)
+            return ans
+        
+        # Neither constraint breached
 
-    def in_convex_hull_of_attractor_region(self, x):
-        pass
+        if self.in_neutral_region(self.neutral_region_centres, self.neutral_region_radii, x):
+            ans["obj_vector"] = self.neutral_region_objective_values
+        else: 
+            ans["obj_vector"] = self.get_objectives(x)
+        return ans
+
+                    
+
+    def is_pareto_2D(self, x: np.ndarray):
+        """
+        
+        """
+        if self.get_hard_constraint_violation():
+            return False
+        if self.get_soft_constraint_violation():
+            return False
+        return self.is_in_limited_region()
+
+    def in_convex_hull_of_attractor_region(self, y: np.ndarray):
+        """
+        
+        """
+        print("in_convex_hull_of_attractor_region")
+        print("What is attractor regions, check indices and stuff\n")
+
+        self.check_valid_length()
+        x = self.get_2D_version(y)
+
+        dist = np.linalg.norm(self._centre_list, x)
+        if np.any(dist < self._centre_radii):
+            return self.in_hull(x, self.attractor_regions) # TODO
+        return False
+
 
     def check_valid_length(self, x):
         if (x.shape[0] != self.n): 
@@ -293,8 +364,19 @@ class DBMOPP:
         r = np.divide(np.dot(x, self._pi2)/np.sum(self._pi2)) # Right side of vector
         return np.hstack((l, r))
 
-    def get_minimun_distance_to_attractors(self, x):
-        pass
+    def get_minimun_distance_to_attractors(self, x: np.ndarray):
+        """
+        
+        """
+        print("Missing self.attractors")
+        y = np.zeros(self.n)
+        for i in range(self.n):
+            d = np.linalg.norm(self.attractors[i] - x)
+            y[i] = np.min(d)
+        
+        y *= self.rescaleMultiplier
+        y += self.rescaleConstant
+        return y
     
     def get_objectives(self, x):
         pass
@@ -302,8 +384,43 @@ class DBMOPP:
     def get_minimum_distances_to_attractors_overlap_or_discontinuous_form(self):
         pass
 
-    def is_in_limited_region(self, x):
-        pass
+    def is_in_limited_region(self, x, eps = 1e-06):
+        """
+        
+        """
+        print("is_in_limited_region")
+        print("TODO: between_lines_rooted_at_pivot, verify that does the same thing\n")
+        ans = {
+            "in_pareto_region": False,
+            "in_hull": False,
+            "index": -1
+        }
+        dist = np.linalg.norm(self._centre_list - x)
+        I = np.where(dist <= self._centre_radii + eps)
+        if len(I) > 0: # is not empty 
+            if self.nlp < I[0] <= self.nlp + self.ngp:
+                if self.constraint_type in [2,6]: 
+                    # Smaller of dist
+                    r = np.min(np.abs(dist[I[0]]), np.abs(self._centre_radii[I[0]]))
+                    # THIS if + elif could be a oneliner ans["inhull"] = np.abs .. or in_hull
+                    if np.abs(dist[I[0]]) - self._centre_radii(I(0)) < 1e4 * eps * r:
+                        ans["in_hull"] = True
+                    elif self.in_hull(x, self.attractor_regions):
+                        ans["in_hull"] = True 
+        
+        if self.pareto_set_type == 0 or self.constraint_type in [2,6]:
+            ans["in_pareto_region"] = ans["in_hull"]
+            ans["in_hull"] = False
+        else:
+            if ans["in_hull"]:
+                ans["index"] = I[0]
+                ans["in_pareto_region"] = self.between_lines_rooted_at_pivot(x,x,x) # TODO
+                if self.pareto_set_type == 1:
+                    if I[0] == self.nlp + self.ngp:
+                        ans["in_pareto_region"] = not ans["in_pareto_region"]
+        return ans
+
+
 
     def update_with_discontinuity(self, x, y):
         pass
@@ -316,6 +433,62 @@ class DBMOPP:
         Set offset and multiplier for objectives
         """
         pass
+
+    
+    # DBMOPP methods
+
+    def in_neutral_region(self, centres, radii, x) -> Tuple[bool, np.ndarray]:
+        if len(centres) < 1: return (False, np.array([]))
+        dist = np.linalg.norm(centres - x)
+        in_region = np.any(dist <= radii)
+        return (in_region, dist)
+
+    def between_lines_rooted_at_pivot(self, x, pivot_loc, loc1, loc2) -> bool:
+        """
+        Plaaplaa
+        """
+        d1 = ( x(1) - pivot_loc(1))*(pivot_loc(2) - pivot_loc(2))
+        - (x(2) - pivot_loc(2))*(loc1(1) - pivot_loc(1))
+
+        d2 = ( x(1) - pivot_loc(1))*(pivot_loc(2) - pivot_loc(2))
+        - (x(2) - pivot_loc(2))*(loc2(1) - pivot_loc(1))
+
+        return d1 == 0 or d2 == 0 or np.sign(d1) != np.sign(d2)
+
+
+    # Methods matlab has built in
+
+    def convhull(self, points):
+        """
+        Construct a convex hull of given set of points
+
+        Args:
+            points (np.ndarray): the points used to construct the convex hull
+        
+        Returns:
+            np.ndarray: The indices of the simplices that form the convex hull
+        """
+        hull = ConvexHull(points)
+        return hull.simplices
+    
+    def in_hull(self, x: np.ndarray, points: np.ndarray):
+        """
+        Is a point inside a convex hull 
+
+        Args:
+            x (np.ndarray): The point that is checked
+            points (np.ndarray): The point cloud of the convex hull
+        
+        Returns:
+            bool: is x inside the convex hull given by points 
+        """
+        n_points = len(points)
+        n_dim = len(x)
+        c = np.zeros(n_points)
+        A = np.r_[points.T,np.ones((1,n_points))]
+        b = np.r_[x, np.ones(1)]
+        lp = linprog(c, A_eq=A, b_eq=b)
+        return lp.success
 
 
     # THESE WERE NOT IN THE MATLAB CODE BUT IN THE ARTICLE
@@ -409,8 +582,10 @@ class DBMOPP:
 
 if __name__=="__main__":
     # global PO set style 0.
+    x = np.array([1,2])
     my_instance = DBMOPP(4, 2, 0, 0, 5, 0,1,0,0,True, False, 0)
     my_instance.initialize()
     print(my_instance._centre_list)
+    print(my_instance.evaluate_2D(x))
     print("runs")
 
