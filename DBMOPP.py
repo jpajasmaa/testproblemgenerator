@@ -7,6 +7,19 @@ from scipy.optimize import linprog
 # utilities
 # TODO: figure out the structure
 
+# here only because attractorRegions won't find it if its defined after attractorRegions
+def convhull(points):
+    """
+    Construct a convex hull of given set of points
+
+    Args:
+        points (np.ndarray): the points used to construct the convex hull
+    
+    Returns:
+        np.ndarray: The indices of the simplices that form the convex hull
+    """
+    hull = ConvexHull(points)
+    return hull.simplices
 
 
 class DBMOPP:
@@ -73,8 +86,8 @@ class DBMOPP:
         # Attributes. This is ugly :D Could change it to own class with just attributes. thoughts?
         self.rescaleConstant = 0 # What the hell is up with these two attributes
         self.rescaleMultiplier = 1 # They are only used once and even there they do nothing...
-        self.attractors = None # aka attractorsList what is this?
-        self.attractor_regions = None # What is this
+        self.attractors = dict([]) # aka attractorsList what is this?
+        self.attractor_regions = dict([]) # What is this
         self._pi1 = None
         self._pi2 = None
         self.neutral_region_objective_values = np.sqrt(8)
@@ -239,7 +252,7 @@ class DBMOPP:
             self._centre_radii[self.nlp + 1 : -1] = radius / 2
             w = np.linspace(1, 0.5, self.nlp + 1)
             # linearly decrease local front radii
-            #self._centre_radii[0:self.nlp] = self._centre_radii[0:self.nlp] * w[0:self.nlp]
+            self._centre_radii[0:self.nlp] = self._centre_radii[0:self.nlp] @  w[0:self.nlp] # matmul again
 
         # save indices of PO set locations
         self._pareto_set_indices = self.nlp + self.ngp
@@ -271,10 +284,46 @@ class DBMOPP:
         return r
 
     def place_attractors(self):
-            """
+        """
             Randomly place attractor regions in 2D space
-            """
-            pass
+        """
+        l = self.nlp + self.ngp
+        ini_locs = np.zeros((l, 2, self.k))
+        print(ini_locs)
+
+        from numpy import matlib 
+        for i in np.arange(0, l):
+            # split the long calculation for testing
+            A = np.matlib.repmat(self._centre_list[i,:], self.k, 1) + np.matlib.repmat(self._centre_radii[i], self.k, 2) # centres and their radius
+            B = np.cos(self._pareto_angles + self._rotations[i]), np.sin(self._pareto_angles + self._rotations[i]) # generated angle
+            locs = A @ B # cool kid matmul @
+            
+            #locs = locs.reshape(2,4)
+            print(locs.shape)
+            # now locs is matrixx, change it to np.array
+            print(locs)
+            print("locks", locs[:,1])
+            print(locs[:,2])
+
+            self.attractor_regions[i] = {"location" : locs}   
+            self.attractor_regions[i] = {"obj_ind" : range(0,self.k+1)}  # range is exclusive so we add + 1 ? 
+            self.attractor_regions[i] = {"centre" : self._centre_list[i,:] } # matlab comments these two as duplicate storage.. 
+            self.attractor_regions[i] = {"obj_ind" : self._centre_radii[i] }  # we prob should get rid of these later
+            # need to feed the points in right shape 
+            #self.attractor_regions[i] = {"convhull" : convhull(locs)}
+
+            # this has wrong shapes aswell
+            for j in np.arange(self.k):
+                ini_locs[i,:,j] = locs[j,:] 
+
+
+            # matlabcode copies locations to the attractors for easier use for plotting
+            for i in range(self.k):
+                self.attractors[i] = {"locations" : ini_locs[:,:,i]}
+
+
+            # code assigns dominance resistance regions. ignore for now
+
 
     def initialize(self):
         #place attractor centres for regions defining attractor points
@@ -458,18 +507,7 @@ class DBMOPP:
 
     # Methods matlab has built in
 
-    def convhull(self, points):
-        """
-        Construct a convex hull of given set of points
 
-        Args:
-            points (np.ndarray): the points used to construct the convex hull
-        
-        Returns:
-            np.ndarray: The indices of the simplices that form the convex hull
-        """
-        hull = ConvexHull(points)
-        return hull.simplices
     
     def in_hull(self, x: np.ndarray, points: np.ndarray):
         """
