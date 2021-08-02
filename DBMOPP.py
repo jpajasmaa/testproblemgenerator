@@ -31,8 +31,13 @@ class DBMOPPobject:
         self.centre_list = None
         self.pareto_angles = None
         self.rotations = None
-        self.neutral_region_centres = []
+
+        self.neutral_region_centres = None
         self.neutral_region_radii = None
+
+        self.discontinuous_region_centres = None
+        self.discontinuous_region_objective_value_offset = None
+        self.discontinuous_region_radii = None
 
 
 class DBMOPP:
@@ -70,8 +75,8 @@ class DBMOPP:
         ndr: int,
         ngp: int,
         prop_constraint_checker: float,
-        pareto_set_type: str,
-        constraint_type: str,
+        pareto_set_type: int,
+        constraint_type: int,
         ndo: int = 0,
         vary_sol_density: bool = False,
         vary_objective_scales: bool = False,
@@ -194,7 +199,7 @@ class DBMOPP:
         
         # Neither constraint breached
 
-        if self.in_neutral_region(self.obj.neutral_region_centres, self.obj.neutral_region_radii, x):
+        if self.in_neutral_region(self.obj.neutral_region_centres, self.obj.neutral_region_radii, x)[0]:
             ans["obj_vector"] = self.obj.neutral_region_objective_values
         else: 
             ans["obj_vector"] = self.get_objectives(x)
@@ -387,10 +392,12 @@ class DBMOPP:
         pass
 
     def get_hard_constraint_violation(self, x):
-        pass
+        print("get_hard_constraint_violation NOT DONE")
+        return False
 
     def get_soft_constraint_violation(self, x):
-        pass
+        print("get_soft_constraint_violation NOT DONE")
+        return False
 
     def assign_design_dimension_projection(self):
         """
@@ -432,7 +439,6 @@ class DBMOPP:
         """
         
         """
-        print("Missing self.attractors")
         y = np.zeros(self.n)
         for i in range(self.n):
             d = np.linalg.norm(self.obj.attractors[i] - x)
@@ -443,10 +449,18 @@ class DBMOPP:
         return y
     
     def get_objectives(self, x):
-        pass
+        print("Get objectives")
+        if (self.pareto_set_type == 0):
+            y = self.get_minimun_distance_to_attractors(x)
+        else:
+            y = self.get_minimum_distances_to_attractors_overlap_or_discontinuous_form(x)
+        
+        y = self.update_with_discontinuity(x,y)
+        y = self.update_with_neutrality(x,y)
+        return y
 
     def get_minimum_distances_to_attractors_overlap_or_discontinuous_form(self):
-        pass
+        print("get_minimum_distances_to_attractors_overlap_or_discontinuous_form NOT DONE")
 
     def is_in_limited_region(self, x, eps = 1e-06):
         """
@@ -487,10 +501,24 @@ class DBMOPP:
 
 
     def update_with_discontinuity(self, x, y):
-        pass
+        if self.obj.discontinuous_region_centres is None: return y # or len = 0 ?
+        dist = np.linalg.norm(self.obj.discontinuous_region_centres - x)
+        dist[dist >= self.obj.discontinuous_region_radii] = 0 
+        if np.sum(dist) > 0: # Could check more efficiently
+            i = np.argmin(dist) # Umm should it be min of a value which is greater than 0
+            y = y + self.obj.discontinuous_region_objective_value_offset[i,:]
+        return y
+
 
     def update_with_neutrality(self, x, y):
-        pass
+        if self.obj.neutral_region_centres is None: return y # or len = 0 ?
+        dist = np.linalg.norm(self.obj.neutral_region_centres - x)
+        dist[dist >= self.obj.neutral_region_radii] = 0 
+        if np.sum(dist) > 0: # Could check more efficiently
+            i = np.argmin(dist) # Umm should it be min of a value which is greater than 0
+            y = y + self.obj.neutral_region_objective_values[i,:]
+        return y
+
 
     def set_objective_rescaling_variables(self):
         """
@@ -502,7 +530,7 @@ class DBMOPP:
     # DBMOPP methods
 
     def in_neutral_region(self, centres, radii, x) -> Tuple[bool, np.ndarray]:
-        if len(centres) < 1: return (False, np.array([]))
+        if centres is None or len(centres) < 1: return (False, np.array([]))
         dist = np.linalg.norm(centres - x)
         in_region = np.any(dist <= radii)
         return (in_region, dist)
@@ -653,7 +681,7 @@ class DBMOPP:
 if __name__=="__main__":
     # global PO set style 0.
     x = np.array([1,2])
-    my_instance = DBMOPP(5, 2, 0, 0, 1, 0,1,0,0,False, False, 0)
+    my_instance = DBMOPP(5, 2, 0, 0, 1, 0,0,0,0,False, False, 0)
     my_instance.initialize()
     print(my_instance.obj.centre_list)
     print(my_instance.evaluate_2D(x))
