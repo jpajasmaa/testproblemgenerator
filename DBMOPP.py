@@ -103,6 +103,8 @@ class DBMOPP:
 
         self.obj = DBMOPPobject() # The obj in the matlab implementation
 
+        self.initialize()
+
     
     def _validate_args(
         self,
@@ -156,6 +158,11 @@ class DBMOPP:
         return np.random.rand(n,1) * 2 * np.pi
     
     # HIDDEN METHODS, not really but in MATLAB :D
+
+    def evaluate(self, x):
+        self.check_valid_length(x)
+        z = self.get_2D_version(x)
+        return self.evaluate_2D(z)
 
     def evaluate_2D(self, x) -> Dict:
         """
@@ -406,16 +413,17 @@ class DBMOPP:
         which will be subsequantly evaluated
         """
         if self.n > 2:
-            mask = np.random.permutation(self.n) + 1 # + 1 because we want to start from 1 and include n
+            mask = np.random.permutation(self.n)
+            print(mask)
             if self.vary_sol_density:
-                diff = np.random.randint(1, self.n)
+                diff = np.random.randint(0, self.n)
                 mask = mask[:diff] # Take the diff first elements
             else: 
                 half = int(np.ceil(self.n/2))
                 mask = mask[:half] # Take half first elements
-        
+            print(mask)
             self.obj.pi1 = np.array([False]*self.n)
-            self.obj.pi1[:mask] = True
+            self.obj.pi1[mask] = True
             self.obj.pi2 = np.logical_not(self.obj.pi1)
 
     def get_2D_version(self, x):
@@ -428,24 +436,28 @@ class DBMOPP:
         Returns:
             np.ndarray: A 2-dimensional vector
         """
-        if (x.shape[0] < 2):
+        if (x.shape[0] <= 2):
             print("Skipping projection, vector already 2 dimensional or less")
             return x
-        l = np.divide(np.dot(x, self.obj.pi1)/np.sum(self.obj.pi1)) # Left side of vector
-        r = np.divide(np.dot(x, self.obj.pi2)/np.sum(self.obj.pi2)) # Right side of vector
+        l = np.divide(np.dot(x, self.obj.pi1), np.sum(self.obj.pi1)) # Left side of vector
+        r = np.divide(np.dot(x, self.obj.pi2), np.sum(self.obj.pi2)) # Right side of vector
         return np.hstack((l, r))
 
     def get_minimun_distance_to_attractors(self, x: np.ndarray):
         """
         
         """
-        y = np.zeros(self.n)
-        for i in range(self.n):
+        y = np.zeros(self.k)
+        print("Y", y)
+        for i in range(self.k):
+            print("attrr", self.obj.attractors[i])
+            print(x)
             d = np.linalg.norm(self.obj.attractors[i] - x)
             y[i] = np.min(d)
         
         y *= self.obj.rescaleMultiplier
         y += self.obj.rescaleConstant
+        print(y)
         return y
     
     def get_objectives(self, x):
@@ -677,13 +689,21 @@ class DBMOPP:
         return self #MOProblem() # hmmm 
 
 
-
+import matplotlib.pyplot as plt
 if __name__=="__main__":
     # global PO set style 0.
-    x = np.array([1,2])
-    my_instance = DBMOPP(5, 2, 0, 0, 1, 0,0,0,0,False, False, 0)
-    my_instance.initialize()
+    my_instance = DBMOPP(3, 2, 0, 0, 1, 0,0,0,0,False, False, 0)
     print(my_instance.obj.centre_list)
-    print(my_instance.evaluate_2D(x))
     print("runs")
 
+    t = np.random.rand(1000,2)
+    data = np.zeros((1000,3))
+    for i in range(1000):
+        obj = my_instance.evaluate(t[i])["obj_vector"]
+        print(obj)
+        data[i]= obj
+    print(data)
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    ax.scatter(data[:,0], data[:,1], data[:,2])
+    plt.show()
