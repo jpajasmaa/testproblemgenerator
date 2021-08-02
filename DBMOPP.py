@@ -241,7 +241,6 @@ class DBMOPP:
         """
         # number of local PO sets, global PO sets, dominance resistance regions
         n = self.nlp + self.ngp + self.ndr 
-        print(n)
 
         max_radius = 1/(2*np.sqrt(n)+1) * (1 - (self.prop_neutral + self.prop_contraint_checker)) # prop 0 and 0.
         radius = self.place_regions(n, max_radius)
@@ -270,8 +269,8 @@ class DBMOPP:
 
         time_start = time()
         max_elapsed = 5 # Max seconds after reattempt. THIS IS VERY DUMP!
-
-        self.obj.centre_list[0,:] = (np.random.rand(1,2)*2*effective_bound) - effective_bound  #random cordinate pair between -(1-radius) and +(1-radius)
+        rand_coord = (np.random.rand(1, 2)*2*effective_bound) - effective_bound
+        self.obj.centre_list[0,:] = rand_coord  #random cordinate pair between -(1-radius) and +(1-radius)
         print('Radius: ', r)
 
         for i in np.arange(1, n):
@@ -286,7 +285,9 @@ class DBMOPP:
                 if (too_long): # Took longer than max_elapsed... Still very dump
                     print('restarting attractor region placement with smaller radius...\n')
                     return self.place_regions(n, r*0.95)
-        self.obj.centre_list[i,:] = rand_coord
+            self.obj.centre_list[i,:] = rand_coord
+
+        print("centre list", self.obj.centre_list)
         return r
 
     def place_attractors(self):
@@ -295,49 +296,55 @@ class DBMOPP:
         """
         l = self.nlp + self.ngp
         ini_locs = np.zeros((l, 2, self.k))
-        print(ini_locs)
+        print("initial locations: ", ini_locs)
 
         self.obj.attractor_regions = np.array([attractorRegion()] * self.k)
 
-        from numpy import matlib 
+        from numpy import matlib
         for i in np.arange(0, l):
-            # split the long calculation for testing
-            A = np.matlib.repmat(self.obj.centre_list[i,:], self.k, 1) + np.matlib.repmat(self.obj.centre_radii[i], self.k, 2) # centres and their radius
-            B = np.cos(self.obj.pareto_angles + self.obj.rotations[i]), np.sin(self.obj.pareto_angles + self.obj.rotations[i]) # generated angle
-            locs = A @ B # cool kid matmul @ xD
-            
-            #locs = locs.reshape(2,4)
-            print(locs.shape)
-            # now locs is matrixx, change it to np.array
-            print(locs)
-            print("locks", locs[:,1])
-            print(locs[:,2])
+            print(np.cos(self.obj.pareto_angles + self.obj.rotations[i]))
+            print("matmuil", matlib.repmat(self.obj.centre_radii[i], self.k, 2))
+            B = np.hstack((
+                np.cos(self.obj.pareto_angles + self.obj.rotations[i]),
+                np.sin(self.obj.pareto_angles + self.obj.rotations[i])
+            ))
+            print("B", B)
+            print("pareto_angles ", self.obj.pareto_angles)
+            print("rots ",self.obj.rotations[i])
+            locs = (
+                matlib.repmat(self.obj.centre_list[i,:], self.k, 1) + 
+                (matlib.repmat(self.obj.centre_radii[i], self.k, 2) * B)
+            )
+
+            print("centre radi ", self.obj.centre_radii[i])
+            print("centre list ", self.obj.centre_list[i,:])
+            print("centrepoints ", self.obj.centre_list)
+            print("locs", locs)
 
             self.obj.attractor_regions[i].location = locs
-            self.obj.attractor_regions[i].objective_indices = range(0,self.k+1) # range is exclusive so we add + 1 ? Don't think so as we want the indices and we start from zero, need to check
+            self.obj.attractor_regions[i].objective_indices = np.arange(self.k) 
             self.obj.attractor_regions[i].centre = self.obj.centre_list[i,:] # matlab comments these two as duplicate storage.. 
             self.obj.attractor_regions[i].radius = self.obj.centre_radii[i]  # we prob should get rid of these later
             # need to feed the points in right shape 
             self.obj.attractor_regions[i].convhull = self.convhull(locs)
 
-            # this has wrong shapes aswell
-            for j in np.arange(self.k):
-                ini_locs[i,:,j] = locs[j,:] 
+            for k in np.arange(self.k):
+                ini_locs[i,:,k] = locs[k,:] 
 
+        # matlabcode copies locations to the attractors for easier use for plotting
+        self.obj.attractors = np.zeros((self.k, self.nlp + self.ngp, 2)) # Not sure about this
+        for i in range(self.k):
+            self.obj.attractors[i] = ini_locs[:,:,i]
 
-            # matlabcode copies locations to the attractors for easier use for plotting
-            for i in range(self.k):
-                self.obj.attractors[i] = ini_locs[:,:,i]
-
-
-            # code assigns dominance resistance regions. ignore for now
+        print("attractors", self.obj.attractors)
+        # code assigns dominance resistance regions. ignore for now
 
 
     def initialize(self):
         #place attractor centres for regions defining attractor points
         self.set_up_attractor_centres()
         #set up angles for attractors on regin cicumferences and arbitrary rotations for regions
-        self.obj.pareto_angles = self.get_random_angles(self.n) # arbitrary angles for Pareto set
+        self.obj.pareto_angles = self.get_random_angles(self.k) # arbitrary angles for Pareto set
         print(self.obj.centre_radii)
         self.obj.rotations = self.get_random_angles(self.obj.centre_radii.shape[0])
         # now place attractors
@@ -526,6 +533,7 @@ class DBMOPP:
             np.ndarray: The indices of the simplices that form the convex hull
         """
         print("p",points)
+        # TODO validate that enough unique points and so on
         hull = ConvexHull(points)
         return hull.simplices
 
@@ -645,7 +653,7 @@ class DBMOPP:
 if __name__=="__main__":
     # global PO set style 0.
     x = np.array([1,2])
-    my_instance = DBMOPP(5, 2, 0, 0, 5, 0,1,0,0,True, False, 0)
+    my_instance = DBMOPP(5, 2, 0, 0, 1, 0,1,0,0,False, False, 0)
     my_instance.initialize()
     print(my_instance.obj.centre_list)
     print(my_instance.evaluate_2D(x))
