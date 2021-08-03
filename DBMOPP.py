@@ -35,6 +35,12 @@ class DBMOPPobject:
         self.neutral_region_centres = None
         self.neutral_region_radii = None
 
+        self.hard_constraint_centres = None
+        self.hard_constraint_radii = None
+
+        self.soft_constraint_centres = None
+        self.soft_constraint_radii = None
+
         self.discontinuous_region_centres = None
         self.discontinuous_region_objective_value_offset = None
         self.discontinuous_region_radii = None
@@ -151,11 +157,16 @@ class DBMOPP:
         if not 0 <= prop_neutral <= 1:
             msg += f"Proportion of neutral space should be between zero and one, was {prop_neutral}.\n"
         if nm < 1000:
-            msg += f"Number of samples should be greater than 1000, was {nm}.\n"
+            msg += f"Number of samples should be at least 1000, was {nm}.\n"
         return msg
     
     def get_random_angles(self, n):
         return np.random.rand(n,1) * 2 * np.pi
+    
+    def is_pareto_set_member(self, z):
+        self.check_valid_length(z)
+        x = self.get_2D_version(z)
+        return self.is_pareto_2D(x)
     
     # HIDDEN METHODS, not really but in MATLAB :D
 
@@ -206,13 +217,11 @@ class DBMOPP:
         
         # Neither constraint breached
 
-        if self.in_neutral_region(self.obj.neutral_region_centres, self.obj.neutral_region_radii, x)[0]:
+        if self.in_region(self.obj.neutral_region_centres, self.obj.neutral_region_radii, x)[0]:
             ans["obj_vector"] = self.obj.neutral_region_objective_values
         else: 
             ans["obj_vector"] = self.get_objectives(x)
         return ans
-
-                    
 
     def is_pareto_2D(self, x: np.ndarray):
         """
@@ -384,13 +393,28 @@ class DBMOPP:
         """
         Place center constraint regions
         """
-        pass
+        print("Assigning any centre soft/hard constraint regions.\n")
+        if self.constraint_type == 2:
+            self.obj.hard_constraint_centres = self.obj.centre_list
+            self.obj.hard_constraint_radii = self.obj.centre_radii
+        elif self.constraint_type == 5:
+            self.obj.soft_constraint_centres = self.obj.centre_list
+            self.obj.soft_constraint_radii = self.obj.centre_radii
 
     def place_moat_constraint_locations(self):
         """
         Place moat constraint regions
         """
-        pass 
+        print('Assigning any moat soft/hard constraint regions\n')
+        r = np.random.rand() + 1
+        if self.constraint_type == 3:
+            self.obj.hard_constraint_centres = self.obj.centre_list
+            self.obj.hard_constraint_radii = self.obj.centre_radii * r
+        elif self.constraint_type == 6:
+            self.obj.soft_constraint_centres = self.obj.centre_list
+            self.obj.soft_constraint_radii = self.obj.centre_radii * r
+
+         
 
     def place_discontinunities_neutral_and_checker_constraints(self):
         pass
@@ -541,7 +565,7 @@ class DBMOPP:
     
     # DBMOPP methods
 
-    def in_neutral_region(self, centres, radii, x) -> Tuple[bool, np.ndarray]:
+    def in_region(self, centres, radii, x) -> Tuple[bool, np.ndarray]:
         if centres is None or len(centres) < 1: return (False, np.array([]))
         dist = np.linalg.norm(centres - x)
         in_region = np.any(dist <= radii)
@@ -576,8 +600,6 @@ class DBMOPP:
         # TODO validate that enough unique points and so on
         hull = ConvexHull(points)
         return hull.simplices
-
-
 
     
     def in_hull(self, x: np.ndarray, points: np.ndarray):
