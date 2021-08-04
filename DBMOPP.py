@@ -3,6 +3,8 @@ import numpy as np
 from scipy.spatial import ConvexHull
 from scipy.optimize import linprog
 from time import time
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 #from desdeo_problem.problem import MOProblem
 
 # utilities
@@ -15,6 +17,21 @@ class attractorRegion:
         self.centre = None
         self.radius = None
         self.convhull = None
+    
+    def plot(self, ax, color = 'b'):
+        """
+        Very basic atm, Just plot the outer lines
+        """
+        if self.convhull is None: return
+        p = self.locations
+        
+        for s in self.convhull.simplices:
+            ax.plot(p[s,0], p[s,1], color = 'black')
+        ax.fill(p[self.convhull.vertices,0], p[self.convhull.vertices, 1], color=color, alpha = 0.7)
+
+
+
+
 
 
 class DBMOPPobject:
@@ -342,7 +359,7 @@ class DBMOPP:
             print("centrepoints ", self.obj.centre_list)
             print("locs", locs)
 
-            self.obj.attractor_regions[i].location = locs
+            self.obj.attractor_regions[i].locations = locs
             self.obj.attractor_regions[i].objective_indices = np.arange(self.k) 
             self.obj.attractor_regions[i].centre = self.obj.centre_list[i,:] # matlab comments these two as duplicate storage.. 
             self.obj.attractor_regions[i].radius = self.obj.centre_radii[i]  # we prob should get rid of these later
@@ -582,10 +599,64 @@ class DBMOPP:
         - (x(2) - pivot_loc(2))*(loc2(1) - pivot_loc(1))
 
         return d1 == 0 or d2 == 0 or np.sign(d1) != np.sign(d2)
+    
+    # PLOTTING
+
+    def plot_problem_instance(self):
+        """
+        """
+        fig, ax = plt.subplots()
+        # Plot local Pareto regions
+
+        plt.xlim([-1, 1])
+        plt.ylim([-1,1])
+        for i in range(self.nlp):
+            self.obj.attractor_regions[i].plot(ax, 'g') # Green
+        
+        # global pareto regions
+        for i in range(self.nlp, self.nlp + self.ngp):
+            self.obj.attractor_regions[i].plot(ax, 'r')
+            print("the fill here is different than above")
+        
+        # dominance resistance set regions
+        for i in range(self.nlp + self.ngp, self.nlp + self.ngp + self.ndr):
+            # attractor regions should take care of different cases
+            self.obj.attractor_regions[i].plot(ax, 'b') 
+        
+        # Plot contraint region rectangles
+        def plot_constraint_regions(centres, radii, color):
+            if radii is None: return
+            for i in range(len(radii)):
+                x = centres[i,0] - radii[i]
+                y = centres[i,1] - radii[i]
+                r = radii[i] * 2
+                self.plot_rectangle(ax, x, y, r, r, color)
+            
+        plot_constraint_regions(self.obj.hard_constraint_radii, self.obj.hard_constraint_centres, 'yellow')
+        plot_constraint_regions(self.obj.soft_constraint_radii, self.obj.soft_constraint_centres, 'orange')
+        plot_constraint_regions(self.obj.neutral_region_radii, self.obj.neutral_region_centres, 'grey')
+
+        # PLOT DISCONNECTED PENALTY
+        print("disconnected Pareto penalty regions not yet plotted. THIS IS NOT IMPLEMENTED IN MATLAB")
+
+        # plot attractor points
+        # This could propably be done better in just the attractor region place...
+        for i in range(self.k):
+            locs = self.obj.attractors[i]
+            ax.scatter(locs[:,0], locs[:,1], color = 'b')
+            ax.annotate(i, (locs[:,0], locs[:,1]))
+
+        plt.show()
+        
 
 
     # Methods matlab has built in
     # here only because attractorRegions won't find it if its defined after attractorRegions
+
+    def plot_rectangle(self, ax, x, y, rx, ry, color):
+        rectangle = Rectangle((x,y), rx, ry, fc = 'none', color=color, linewidth = 5)
+        ax.add_patch(rectangle)
+
     def convhull(self,points):
         """
         Construct a convex hull of given set of points
@@ -599,7 +670,7 @@ class DBMOPP:
         print("p",points)
         # TODO validate that enough unique points and so on
         hull = ConvexHull(points)
-        return hull.simplices
+        return hull
 
     
     def in_hull(self, x: np.ndarray, points: np.ndarray):
@@ -711,21 +782,24 @@ class DBMOPP:
         return self #MOProblem() # hmmm 
 
 
-import matplotlib.pyplot as plt
 if __name__=="__main__":
     # global PO set style 0.
-    my_instance = DBMOPP(3, 2, 0, 0, 1, 0,0,0,0,False, False, 0)
-    print(my_instance.obj.centre_list)
+    # if k < ngp this fails, add check or fix the bug :D
+    # currently also fails if ngp > 1 so fix that first.
+    problem = DBMOPP(4, 10, 0, 0, 1, 0,0,0,0,False, False, 0)
+    print(problem.obj.centre_list)
     print("runs")
 
-    t = np.random.rand(1000,2)
-    data = np.zeros((1000,3))
-    for i in range(1000):
-        obj = my_instance.evaluate(t[i])["obj_vector"]
-        print(obj)
-        data[i]= obj
-    print(data)
-    fig = plt.figure()
-    ax = fig.add_subplot(projection='3d')
-    ax.scatter(data[:,0], data[:,1], data[:,2])
-    plt.show()
+    problem.plot_problem_instance()
+
+    # t = np.random.rand(1000,2)
+    # data = np.zeros((1000,3))
+    # for i in range(1000):
+    #     obj = problem.evaluate(t[i])["obj_vector"]
+    #     print(obj)
+    #     data[i]= obj
+    # print(data)
+    # fig = plt.figure()
+    # ax = fig.add_subplot(projection='3d')
+    # ax.scatter(data[:,0], data[:,1], data[:,2])
+    # plt.show()
