@@ -2,10 +2,11 @@ from typing import Dict, Tuple
 import numpy as np
 from scipy.spatial import ConvexHull
 from scipy.optimize import linprog
-from time import time
+from time import localtime, time
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-#from desdeo_problem.problem import MOProblem
+from numpy import matlib # i guess we could implement repmat ourselves
+from desdeo_problem.problem import MOProblem
 
 # utilities
 # TODO: figure out the structure
@@ -28,11 +29,6 @@ class attractorRegion:
         for s in self.convhull.simplices:
             ax.plot(p[s,0], p[s,1], color = 'black')
         ax.fill(p[self.convhull.vertices,0], p[self.convhull.vertices, 1], color=color, alpha = 0.7)
-
-
-
-
-
 
 class DBMOPPobject:
     def __init__(self):
@@ -61,6 +57,10 @@ class DBMOPPobject:
         self.discontinuous_region_centres = None
         self.discontinuous_region_objective_value_offset = None
         self.discontinuous_region_radii = None
+
+        self.pivot_locations = None
+        self.bracketing_locations_lower = None
+        self.bracketing_locations_upper = None
 
 
 class DBMOPP:
@@ -210,12 +210,6 @@ class DBMOPP:
             "soft_constr_viol": False,
             "hard_constr_viol": False,
         }
-        print("evaluate_2D:")
-        print("This should propably be done with moproblem.evaluate at some point")
-        print("or maybe this can be passed to moproblem...")
-        print("TODO get hard and soft constraint violation, get objectives")
-        print("neutral things not defined\n")
-
         if self.get_hard_constraint_violation(x):
             ans["hard_constr_viol"] = True
             if self.constraint_type == 3:
@@ -255,8 +249,7 @@ class DBMOPP:
         
         """
         print("in_convex_hull_of_attractor_region")
-        print("What is attractor regions, check indices and stuff\n")
-
+        print("TODO indexi jumppa\n\n")
         self.check_valid_length()
         x = self.get_2D_version(y)
 
@@ -290,7 +283,7 @@ class DBMOPP:
             self.obj.centre_radii[self.nlp + 1 : -1] = radius / 2
             w = np.linspace(1, 0.5, self.nlp + 1)
             # linearly decrease local front radii
-            self.obj.centre_radii[0:self.nlp] = self.obj.centre_radii[0:self.nlp] @  w[0:self.nlp] # matmul again
+            self.obj.centre_radii[0:self.nlp] = self.obj.centre_radii[0:self.nlp] *  w[0:self.nlp]
 
         # save indices of PO set locations
         self._pareto_set_indices = self.nlp + self.ngp
@@ -324,40 +317,31 @@ class DBMOPP:
                     print('restarting attractor region placement with smaller radius...\n')
                     return self.place_regions(n, r*0.95)
             self.obj.centre_list[i,:] = rand_coord
-
-        print("centre list", self.obj.centre_list)
         return r
 
     def place_attractors(self):
         """
             Randomly place attractor regions in 2D space
         """
+        print("place_attractors")
         l = self.nlp + self.ngp
         ini_locs = np.zeros((l, 2, self.k))
-        print("initial locations: ", ini_locs)
 
-        self.obj.attractor_regions = np.array([attractorRegion()] * self.k)
+        self.obj.attractor_regions = np.array([None] * self.k)
+        for i in range(self.k):
+            self.obj.attractor_regions[i] = attractorRegion()
 
-        from numpy import matlib
         for i in np.arange(0, l):
-            print(np.cos(self.obj.pareto_angles + self.obj.rotations[i]))
-            print("matmuil", matlib.repmat(self.obj.centre_radii[i], self.k, 2))
+
             B = np.hstack((
                 np.cos(self.obj.pareto_angles + self.obj.rotations[i]),
                 np.sin(self.obj.pareto_angles + self.obj.rotations[i])
             ))
-            print("B", B)
-            print("pareto_angles ", self.obj.pareto_angles)
-            print("rots ",self.obj.rotations[i])
+
             locs = (
                 matlib.repmat(self.obj.centre_list[i,:], self.k, 1) + 
                 (matlib.repmat(self.obj.centre_radii[i], self.k, 2) * B)
             )
-
-            print("centre radi ", self.obj.centre_radii[i])
-            print("centre list ", self.obj.centre_list[i,:])
-            print("centrepoints ", self.obj.centre_list)
-            print("locs", locs)
 
             self.obj.attractor_regions[i].locations = locs
             self.obj.attractor_regions[i].objective_indices = np.arange(self.k) 
@@ -367,14 +351,14 @@ class DBMOPP:
             self.obj.attractor_regions[i].convhull = self.convhull(locs)
 
             for k in np.arange(self.k):
-                ini_locs[i,:,k] = locs[k,:] 
-
+                ini_locs[i,:,k] = locs[k,:]
+            
         # matlabcode copies locations to the attractors for easier use for plotting
         self.obj.attractors = np.zeros((self.k, self.nlp + self.ngp, 2)) # Not sure about this
         for i in range(self.k):
             self.obj.attractors[i] = ini_locs[:,:,i]
 
-        print("attractors", self.obj.attractors)
+        print("TODO assign dominacne resistance regions\n\n")
         # code assigns dominance resistance regions. ignore for now
 
 
@@ -398,7 +382,79 @@ class DBMOPP:
         self.assign_design_dimension_projection()
 
     def place_disconnected_pareto_elements(self):
-        pass
+        n = self.ngp - 1
+        pivot_index = np.random.randint(self.k)
+
+        # sort from smallest to largest and get the indices
+        indices = np.argsort(self.obj.pareto_angles, axis = 0)
+
+        offset_angle_1 = (self.obj.pareto_angles[indices[self.k - 1]] if pivot_index == 0
+            else self.obj.pareto_angles[indices[pivot_index-1]]) # check this minus
+        
+        offset_angle_2 = (self.obj.pareto_angles[indices[0]] if pivot_index == self.k-1
+            else self.obj.pareto_angles[indices[pivot_index + 1]]) # check plus
+        
+        pivot_angle = self.obj.pareto_angles[indices[pivot_index]]
+
+        if pivot_angle == (offset_angle_1 or offset_angle_2):
+            raise Exception("Angle should not be duplicated!")
+        
+        if offset_angle_1 < offset_angle_2:
+            range_covered = offset_angle_1 + 2 * np.pi - offset_angle_2
+            p1 = offset_angle_1 / range_covered
+            r = np.random.rand(n)
+            #r = temp ## whats the point of temp
+            p1 = np.sum(r < p1)
+            r[:p1] = 2*np.pi + np.random.rand(p1) * offset_angle_1
+            r[p1:n] = np.random.rand(n-p1) * (2*np.pi - offset_angle_2) + offset_angle_2
+            r = np.sort(r)
+            r_angles = np.zeros(n+2)
+            r_angles[0] = offset_angle_2
+            r_angles[n+1] = offset_angle_1
+            r_angles[1:n+1] = r
+        else:
+            r = r = np.random.rand(n)
+            r = np.sort(r)
+            r_angles = np.zeros(n+2)
+            r_angles[0] = offset_angle_2 # doing almost the same thing above
+            r_angles[n+1] = offset_angle_1
+            r_angles[1:n+1] = r 
+
+        k = self.nlp + self.ngp
+        self.obj.pivot_locations = np.zeros((k, 2)) 
+        self.obj.bracketing_locations_lower = np.zeros((k,2))
+        self.obj.bracketing_locations_upper = np.zeros((k,2))
+
+        def calc_location(ind, a):
+            radiis = matlib.repmat(self.obj.centre_radii[i], 1, 2)
+            return (
+                self.obj.centre_list[ind,:] + radiis
+                * np.hstack((
+                    np.cos(a + self.obj.rotations[i]),
+                    np.sin(a + self.obj.rotations[i])
+                ))
+            )
+
+        index = 0
+        for i in range(self.nlp, self.nlp + self.ngp): # verify indexing
+            self.obj.pivot_locations[i,:] = calc_location(i, pivot_angle)
+            
+            self.obj.bracketing_locations_lower[i,:] = calc_location(i, r_angles[index])
+
+            if self.pareto_set_type == 0:
+                raise Exception('should not be calling this method with an instance with identical Pareto set regions')
+            
+            elif self.pareto_set_type == 2:
+                self.obj.bracketing_locations_upper[i,:] = calc_location(i, r_angles[index+1])
+
+            elif self.pareto_set_type == 1:
+                if index == self.ngp-1:
+                    self.obj.bracketing_locations_lower[i,:] = calc_location(i, r_angles[2])
+                    self.obj.bracketing_locations_upper[i,:] = calc_location(i, r_angles[n])
+                else:
+                    self.obj.bracketing_locations_upper[i,:] = calc_location(i, r_angles[index+2])
+            index += 1
+                    
 
     def place_vertex_constraint_locations(self):
         """
@@ -455,14 +511,12 @@ class DBMOPP:
         """
         if self.n > 2:
             mask = np.random.permutation(self.n)
-            print(mask)
             if self.vary_sol_density:
                 diff = np.random.randint(0, self.n)
                 mask = mask[:diff] # Take the diff first elements
             else: 
                 half = int(np.ceil(self.n/2))
                 mask = mask[:half] # Take half first elements
-            print(mask)
             self.obj.pi1 = np.array([False]*self.n)
             self.obj.pi1[mask] = True
             self.obj.pi2 = np.logical_not(self.obj.pi1)
@@ -489,16 +543,11 @@ class DBMOPP:
         
         """
         y = np.zeros(self.k)
-        print("Y", y)
         for i in range(self.k):
-            print("attrr", self.obj.attractors[i])
-            print(x)
             d = np.linalg.norm(self.obj.attractors[i] - x)
             y[i] = np.min(d)
-        
         y *= self.obj.rescaleMultiplier
         y += self.obj.rescaleConstant
-        print(y)
         return y
     
     def get_objectives(self, x):
@@ -520,7 +569,7 @@ class DBMOPP:
         
         """
         print("is_in_limited_region")
-        print("TODO: between_lines_rooted_at_pivot, verify that does the same thing\n")
+        print("TODO: between_lines_rooted_at_pivot, verify that does the same thing\n\n")
         ans = {
             "in_pareto_region": False,
             "in_hull": False,
@@ -614,6 +663,7 @@ class DBMOPP:
             self.obj.attractor_regions[i].plot(ax, 'g') # Green
         
         # global pareto regions
+
         for i in range(self.nlp, self.nlp + self.ngp):
             self.obj.attractor_regions[i].plot(ax, 'r')
             print("the fill here is different than above")
@@ -641,17 +691,21 @@ class DBMOPP:
 
         # plot attractor points
         # This could propably be done better in just the attractor region place...
+        # ugh double loop
         for i in range(self.k):
-            locs = self.obj.attractors[i]
-            ax.scatter(locs[:,0], locs[:,1], color = 'b')
-            ax.annotate(i, (locs[:,0], locs[:,1]))
+            for j in range(self.ngp):
+                locs = self.obj.attractors[i]
+                ax.scatter(locs[j,0], locs[j,1], color = 'b')
+                ax.annotate(i, (locs[j,0], locs[j,1]))
 
         plt.show()
         
 
 
     # Methods matlab has built in
-    # here only because attractorRegions won't find it if its defined after attractorRegions
+
+    def repmat(t, x, y): # could do this...
+        pass 
 
     def plot_rectangle(self, ax, x, y, rx, ry, color):
         rectangle = Rectangle((x,y), rx, ry, fc = 'none', color=color, linewidth = 5)
@@ -667,7 +721,6 @@ class DBMOPP:
         Returns:
             np.ndarray: The indices of the simplices that form the convex hull
         """
-        print("p",points)
         # TODO validate that enough unique points and so on
         hull = ConvexHull(points)
         return hull
@@ -685,7 +738,6 @@ class DBMOPP:
             bool: is x inside the convex hull given by points 
         """
         n_points = len(points)
-        n_dim = len(x)
         c = np.zeros(n_points)
         A = np.r_[points.T,np.ones((1,n_points))]
         b = np.r_[x, np.ones(1)]
@@ -757,49 +809,15 @@ class DBMOPP:
         Returns:
             MOProblem: A test problem
         """
-        self.set_attractor_regions()
-        self.assign_attractor_region_rotations()
-        self.place_attractor_points()
-        M = self.uniform_sample_from_2D_domain()
-        M = self.remove_samples_in_attractor_regions(M)
-        if self.constraint_type in [4, 8]: # Either soft or hard extended checker
-            M = self.place_checker_constraint_locations(M)
-        if self.prop_neutral > 0: 
-            M = self.place_neutral_regions(M)
-        if self.ndo > 0:
-            self.place_discontinuous_regions(M)
-        if self.constraint_type in [1, 5]: # Either soft or hard vertex
-            self.place_vertex_constraint_locations()
-        elif self.constraint_type in [2,6]: # Either soft or hard center
-            self.place_center_constraint_locations()
-        elif self.constraint_type in [3,7]: # Either soft or hard moat
-            self.place_moat_constraint_locations()
-        # if self.vary_sol_density:
-        #     self.set_projection_vectors()
-        if self.vary_objective_scales:
-            self.set_objective_rescaling_variables()
-        
-        return self #MOProblem() # hmmm 
+        objectives = None # scalar_iob
+        variables = None # variablebuidler()
+        constraints = None # DUNNO
+        return MOProblem(objectives, variables, constraints)
 
 
 if __name__=="__main__":
     # global PO set style 0.
-    # if k < ngp this fails, add check or fix the bug :D
-    # currently also fails if ngp > 1 so fix that first.
-    problem = DBMOPP(4, 10, 0, 0, 1, 0,0,0,0,False, False, 0)
-    print(problem.obj.centre_list)
-    print("runs")
-
+    # if k < ngp this fails. FIX
+    problem = DBMOPP(5, 3, 0, 0, 3, 0,1,0,0,False, False, 0)
+    print("Initializing works!")
     problem.plot_problem_instance()
-
-    # t = np.random.rand(1000,2)
-    # data = np.zeros((1000,3))
-    # for i in range(1000):
-    #     obj = problem.evaluate(t[i])["obj_vector"]
-    #     print(obj)
-    #     data[i]= obj
-    # print(data)
-    # fig = plt.figure()
-    # ax = fig.add_subplot(projection='3d')
-    # ax.scatter(data[:,0], data[:,1], data[:,2])
-    # plt.show()
