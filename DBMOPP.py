@@ -5,8 +5,8 @@ from scipy.optimize import linprog
 from time import localtime, time
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-from numpy import matlib # i guess we could implement repmat ourselves
-from desdeo_problem.problem import MOProblem
+from numpy import divide, matlib # i guess we could implement repmat ourselves
+from desdeo_problem.problem import *
 
 # utilities
 # TODO: figure out the structure
@@ -188,6 +188,7 @@ class DBMOPP:
     # HIDDEN METHODS, not really but in MATLAB :D
 
     def evaluate(self, x):
+        # x = np.atleast_2d(x)
         self.check_valid_length(x)
         z = self.get_2D_version(x)
         return self.evaluate_2D(z)
@@ -205,6 +206,8 @@ class DBMOPP:
                 'soft_constr_viol' : boolean, soft constraint violation
                 'hard_constr_viol' : boolean, hard constraint violation
         """
+        # x = np.atleast_2d(x)
+
         ans = {
             "obj_vector": np.array([None] * self.k),
             "soft_constr_viol": False,
@@ -260,6 +263,7 @@ class DBMOPP:
 
 
     def check_valid_length(self, x):
+        # x = np.atleast_2d(x)
         if (x.shape[0] != self.n): 
             msg = f"Number of design variables in the argument does not match that required in the problem instance, was {x.shape[0]}, should be {self.n}"
             raise Exception(msg)
@@ -327,12 +331,10 @@ class DBMOPP:
         l = self.nlp + self.ngp
         ini_locs = np.zeros((l, 2, self.k))
 
-        self.obj.attractor_regions = np.array([None] * self.k)
-        for i in range(self.k):
-            self.obj.attractor_regions[i] = attractorRegion()
+        self.obj.attractor_regions = np.array([None] * l)
 
         for i in np.arange(0, l):
-
+            self.obj.attractor_regions[i] = attractorRegion()
             B = np.hstack((
                 np.cos(self.obj.pareto_angles + self.obj.rotations[i]),
                 np.sin(self.obj.pareto_angles + self.obj.rotations[i])
@@ -561,8 +563,14 @@ class DBMOPP:
         y = self.update_with_neutrality(x,y)
         return y
 
-    def get_minimum_distances_to_attractors_overlap_or_discontinuous_form(self):
-        print("get_minimum_distances_to_attractors_overlap_or_discontinuous_form NOT DONE")
+    def get_minimum_distances_to_attractors_overlap_or_discontinuous_form(self, x):
+        print("get_minimum_distances_to_attractors_overlap_or_discontinuous_form")
+        y = self.get_minimun_distance_to_attractors(x)
+        in_pareto_region, in_hull, index  = self.is_in_limited_region(x).values()
+        if in_hull:
+            if not in_pareto_region:
+                y += self.obj.centre_radii[index]
+        return y
 
     def is_in_limited_region(self, x, eps = 1e-06):
         """
@@ -576,8 +584,9 @@ class DBMOPP:
             "index": -1
         }
         dist = np.linalg.norm(self.obj.centre_list - x)
-        I = np.where(dist <= self.obj.centre_radii + eps)
-        if len(I) > 0: # is not empty 
+        I = np.where(dist <= (self.obj.centre_radii + eps))
+        I = np.concatenate(I)
+        if I.size > 0: # is not empty 
             if self.nlp < I[0] <= self.nlp + self.ngp:
                 if self.constraint_type in [2,6]: 
                     # Smaller of dist
@@ -809,15 +818,44 @@ class DBMOPP:
         Returns:
             MOProblem: A test problem
         """
-        objectives = None # scalar_iob
-        variables = None # variablebuidler()
-        constraints = None # DUNNO
+        objectives = [ScalarObjective("objective", lambda x: self.evaluate(x)['obj_vector'])]
+
+        var_names = [f'x{i}' for i in range(self.n)]
+        initial_values = (np.random.rand(self.n) * 2) - 1
+        lower_bounds = np.ones(self.n) * -1
+        upper_bounds = np.ones(self.n)
+        variables = variable_builder(var_names, np.random.rand(self.n), lower_bounds, upper_bounds)
+
+        constraints = None # DUNNO // Maybe from evaluate the constraints
         return MOProblem(objectives, variables, constraints)
 
 
 if __name__=="__main__":
+    n_objectives = 5
+    n_variables = 4
+    n_local_pareto_regions = 0
+    n_disconnected_regions = 0
+    n_global_pareto_regions = 6
+    pareto_set_type = 2
     # global PO set style 0.
     # if k < ngp this fails. FIX
-    problem = DBMOPP(5, 3, 0, 0, 3, 0,1,0,0,False, False, 0)
+    problem = DBMOPP(
+        n_objectives,
+        n_variables,
+        n_local_pareto_regions,
+        n_disconnected_regions,
+        n_global_pareto_regions,
+        0,
+        pareto_set_type,
+        0, 0,False, False, 0, 10000
+    )
     print("Initializing works!")
+    x = np.random.rand(n_variables)
+    print(problem.evaluate(x))
+    moproblem = problem.generate_problem()
+
+    # wont work because x will be converted to 2d array and then some of the indexing fail. 
+    # Fix: Either check for 2d or modify the existing code to use the same kind of arrays as desdeo
+    # print(moproblem.evaluate(x)) 
+
     problem.plot_problem_instance()
