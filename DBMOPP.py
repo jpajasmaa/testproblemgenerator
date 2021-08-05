@@ -256,7 +256,7 @@ class DBMOPP:
         self.check_valid_length()
         x = self.get_2D_version(y)
 
-        dist = np.linalg.norm(self.obj.centre_list, x)
+        dist = self.euclidean_distance(self.obj.centre_list, x)
         if np.any(dist < self.obj.centre_radii):
             return self.in_hull(x, self.obj.attractor_regions) # TODO indeksijumppa
         return False
@@ -288,9 +288,9 @@ class DBMOPP:
             w = np.linspace(1, 0.5, self.nlp + 1)
             # linearly decrease local front radii
             self.obj.centre_radii[0:self.nlp] = self.obj.centre_radii[0:self.nlp] *  w[0:self.nlp]
-
+        
         # save indices of PO set locations
-        self._pareto_set_indices = self.nlp + self.ngp
+        self.obj.pareto_set_indices = self.nlp + self.ngp
 
     def place_regions(self, n: int, r: float):
         """
@@ -303,24 +303,29 @@ class DBMOPP:
         self.obj.centre_list = np.zeros((n,2))
 
         time_start = time()
-        max_elapsed = 5 # Max seconds after reattempt. THIS IS VERY DUMP!
+        too_long = False
+        max_elapsed = 1 # Max seconds after reattempt. THIS IS VERY DUMP!
         rand_coord = (np.random.rand(1, 2)*2*effective_bound) - effective_bound
         self.obj.centre_list[0,:] = rand_coord  #random cordinate pair between -(1-radius) and +(1-radius)
+        print('tres', threshold)
         print('Radius: ', r)
 
         for i in np.arange(1, n):
             while True:
                 rand_coord = (np.random.rand(1, 2)*2*effective_bound) - effective_bound
-                t = np.min(np.linalg.norm(self.obj.centre_list[0:i,:] - rand_coord))
-                print(t)
+                t = np.min(self.euclidean_distance(self.obj.centre_list[0:i,:], rand_coord)) # useless min call? 
+                print('t', t)
                 if t > threshold:
                     print("assigned centre", i)
                     break
-                too_long = time() - time_start > max_elapsed
-                if (too_long): # Took longer than max_elapsed... Still very dump
-                    print('restarting attractor region placement with smaller radius...\n')
-                    return self.place_regions(n, r*0.95)
+                too_long = (time() - time_start) > max_elapsed
+                if (too_long): break
             self.obj.centre_list[i,:] = rand_coord
+
+        if (too_long): # Took longer than max_elapsed... Still very dump
+            print('restarting attractor region placement with smaller radius...\n')
+            return self.place_regions(n, r*0.95)
+        print("clist", self.obj.centre_list)
         return r
 
     def place_attractors(self):
@@ -328,10 +333,11 @@ class DBMOPP:
             Randomly place attractor regions in 2D space
         """
         print("place_attractors")
+        print("radii", self.obj.centre_radii)
         l = self.nlp + self.ngp
         ini_locs = np.zeros((l, 2, self.k))
 
-        self.obj.attractor_regions = np.array([None] * l)
+        self.obj.attractor_regions = np.array([None] * l + self.ndr)
 
         for i in np.arange(0, l):
             self.obj.attractor_regions[i] = attractorRegion()
@@ -360,8 +366,8 @@ class DBMOPP:
         for i in range(self.k):
             self.obj.attractors[i] = ini_locs[:,:,i]
 
-        print("Quite sure this fails because attractor regions not defined that far. easy fix\n\n")
         for i in range(l+1, l + self.ndr):
+            self.obj.attractor_regions[i] = attractorRegion()
             locs = (
                 matlib.repmat(self.obj.centre_list[i,:], self.k,1) 
                 + (matlib.repmat(self.obj.centre_radii[i], self.k, 2)
@@ -565,7 +571,7 @@ class DBMOPP:
         """
         y = np.zeros(self.k)
         for i in range(self.k):
-            d = np.linalg.norm(self.obj.attractors[i] - x)
+            d = self.euclidean_distance(self.obj.attractors[i], x)
             y[i] = np.min(d)
         y *= self.obj.rescaleMultiplier
         y += self.obj.rescaleConstant
@@ -602,7 +608,7 @@ class DBMOPP:
             "in_hull": False,
             "index": -1
         }
-        dist = np.linalg.norm(self.obj.centre_list - x)
+        dist = self.euclidean_distance(self.obj.centre_list, x)
         I = np.where(dist <= (self.obj.centre_radii + eps))
         I = np.concatenate(I)
         if I.size > 0: # is not empty 
@@ -632,7 +638,7 @@ class DBMOPP:
 
     def update_with_discontinuity(self, x, y):
         if self.obj.discontinuous_region_centres is None: return y # or len = 0 ?
-        dist = np.linalg.norm(self.obj.discontinuous_region_centres - x)
+        dist = self.euclidean_distance(self.obj.discontinuous_region_centres, x)
         dist[dist >= self.obj.discontinuous_region_radii] = 0 
         if np.sum(dist) > 0: # Could check more efficiently
             i = np.argmin(dist) # Umm should it be min of a value which is greater than 0
@@ -642,7 +648,7 @@ class DBMOPP:
 
     def update_with_neutrality(self, x, y):
         if self.obj.neutral_region_centres is None: return y # or len = 0 ?
-        dist = np.linalg.norm(self.obj.neutral_region_centres - x)
+        dist = self.euclidean_distance(self.obj.neutral_region_centres, x)
         dist[dist >= self.obj.neutral_region_radii] = 0 
         if np.sum(dist) > 0: # Could check more efficiently
             i = np.argmin(dist) # Umm should it be min of a value which is greater than 0
@@ -661,7 +667,7 @@ class DBMOPP:
 
     def in_region(self, centres, radii, x) -> Tuple[bool, np.ndarray]:
         if centres is None or len(centres) < 1: return (False, np.array([]))
-        dist = np.linalg.norm(centres - x)
+        dist = self.euclidean_distance(centres, x)
         in_region = np.any(dist <= radii)
         return (in_region, dist)
 
@@ -722,7 +728,7 @@ class DBMOPP:
         # This could propably be done better in just the attractor region place...
         # ugh double loop
         for i in range(self.k):
-            for j in range(self.ngp):
+            for j in range(self.ngp + self.nlp):
                 locs = self.obj.attractors[i]
                 ax.scatter(locs[j,0], locs[j,1], color = 'b')
                 ax.annotate(i, (locs[j,0], locs[j,1]))
@@ -732,6 +738,9 @@ class DBMOPP:
 
 
     # Methods matlab has built in
+
+    def euclidean_distance(self, x1, x2):
+        return np.sqrt(np.power(np.sum(x1-x2,axis = -1), 2))
 
     def repmat(t, x, y): # could do this...
         pass 
@@ -847,14 +856,12 @@ class DBMOPP:
 
 
 if __name__=="__main__":
-    n_objectives = 5
-    n_variables = 4
+    n_objectives = 10
+    n_variables = 10
     n_local_pareto_regions = 1 # actually works but not sure if correct, Also screws up the some of the region annotations
     n_disconnected_regions = 0 # atm wont work is > 0
-    n_global_pareto_regions = 4
-    pareto_set_type = 2
-    # global PO set style 0.
-    # if k < ngp this fails. FIX
+    n_global_pareto_regions = 3
+    pareto_set_type = 0
     problem = DBMOPP(
         n_objectives,
         n_variables,
@@ -863,7 +870,7 @@ if __name__=="__main__":
         n_global_pareto_regions,
         0,
         pareto_set_type,
-        0, 0,False, False, 0, 10000
+        0, 0, False, False, 0, 10000
     )
     print("Initializing works!")
     x = np.random.rand(n_variables)
