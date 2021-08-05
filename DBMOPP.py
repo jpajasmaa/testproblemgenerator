@@ -360,8 +360,27 @@ class DBMOPP:
         for i in range(self.k):
             self.obj.attractors[i] = ini_locs[:,:,i]
 
-        print("TODO assign dominacne resistance regions\n\n")
-        # code assigns dominance resistance regions. ignore for now
+        print("Quite sure this fails because attractor regions not defined that far. easy fix\n\n")
+        for i in range(l+1, l + self.ndr):
+            locs = (
+                matlib.repmat(self.obj.centre_list[i,:], self.k,1) 
+                + (matlib.repmat(self.obj.centre_radii[i], self.k, 2)
+                    * np.hstack((
+                        np.cos(self.obj.pareto_angles + self.obj.rotations[i]),
+                        np.sin(self.obj.pareto_angles + self.obj.rotations[i])
+                    ))
+                )
+            )
+            n_include = np.random.permutation(self.k - 1) + 1 # Plus one as we want to include at least one
+            n_include = n_include[0] # Take the first one
+            I = np.argsort(np.random.rand(self.k))
+            self.obj.attractor_regions[i].locations = locs[I[:n_include], :]
+            self.obj.attractor_regions[i].objective_indices = I[:n_include]
+            self.obj.attractor_regions[i].radius = self.obj.centre_radii[i]
+            self.obj.attractor_regions[i].convhull = self.convhull(locs)
+            for k in range(n_include):
+                self.obj.attractors[i] = np.vstack((self.obj.attractors[i], locs[I[k], :]))
+
 
 
     def initialize(self):
@@ -427,7 +446,7 @@ class DBMOPP:
         self.obj.bracketing_locations_lower = np.zeros((k,2))
         self.obj.bracketing_locations_upper = np.zeros((k,2))
 
-        def calc_location(ind, a):
+        def calc_location(ind, a): # this is also used in place attractors. so maybe move this so it's also accesible from there
             radiis = matlib.repmat(self.obj.centre_radii[i], 1, 2)
             return (
                 self.obj.centre_list[ind,:] + radiis
@@ -689,7 +708,8 @@ class DBMOPP:
                 x = centres[i,0] - radii[i]
                 y = centres[i,1] - radii[i]
                 r = radii[i] * 2
-                self.plot_rectangle(ax, x, y, r, r, color)
+                rectangle = Rectangle((x,y), r, r, fc = 'none', color=color, linewidth = 5)
+                ax.add_patch(rectangle)
             
         plot_constraint_regions(self.obj.hard_constraint_radii, self.obj.hard_constraint_centres, 'yellow')
         plot_constraint_regions(self.obj.soft_constraint_radii, self.obj.soft_constraint_centres, 'orange')
@@ -715,10 +735,6 @@ class DBMOPP:
 
     def repmat(t, x, y): # could do this...
         pass 
-
-    def plot_rectangle(self, ax, x, y, rx, ry, color):
-        rectangle = Rectangle((x,y), rx, ry, fc = 'none', color=color, linewidth = 5)
-        ax.add_patch(rectangle)
 
     def convhull(self,points):
         """
@@ -824,18 +840,18 @@ class DBMOPP:
         initial_values = (np.random.rand(self.n) * 2) - 1
         lower_bounds = np.ones(self.n) * -1
         upper_bounds = np.ones(self.n)
-        variables = variable_builder(var_names, np.random.rand(self.n), lower_bounds, upper_bounds)
+        variables = variable_builder(var_names, initial_values, lower_bounds, upper_bounds)
 
-        constraints = None # DUNNO // Maybe from evaluate the constraints
+        constraints = None # DUNNO // Maybe from evaluate
         return MOProblem(objectives, variables, constraints)
 
 
 if __name__=="__main__":
     n_objectives = 5
     n_variables = 4
-    n_local_pareto_regions = 0
-    n_disconnected_regions = 0
-    n_global_pareto_regions = 6
+    n_local_pareto_regions = 1 # actually works but not sure if correct, Also screws up the some of the region annotations
+    n_disconnected_regions = 0 # atm wont work is > 0
+    n_global_pareto_regions = 4
     pareto_set_type = 2
     # global PO set style 0.
     # if k < ngp this fails. FIX
