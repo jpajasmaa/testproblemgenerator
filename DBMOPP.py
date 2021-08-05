@@ -284,10 +284,14 @@ class DBMOPP:
 
         if self.nlp > 0:
             # TODO: when locals taken into account. Does not work yet
-            self.obj.centre_radii[self.nlp + 1 : -1] = radius / 2
-            w = np.linspace(1, 0.5, self.nlp + 1)
+            self.obj.centre_radii[self.nlp + 1: -1] = radius / 2
+            w = np.atleast_2d(np.linspace(1, 0.5, self.nlp))
+            print("w", w)
+            print("w", w[0:self.nlp].T)
+            print(self.obj.centre_radii[0:self.nlp])
+            print(self.obj.centre_radii)
             # linearly decrease local front radii
-            self.obj.centre_radii[0:self.nlp] = self.obj.centre_radii[0:self.nlp] *  w[0:self.nlp]
+            self.obj.centre_radii[0:self.nlp] = self.obj.centre_radii[0:self.nlp] * w[0:self.nlp].T
         
         # save indices of PO set locations
         self.obj.pareto_set_indices = self.nlp + self.ngp
@@ -314,7 +318,7 @@ class DBMOPP:
             while True:
                 rand_coord = (np.random.rand(1, 2)*2*effective_bound) - effective_bound
                 t = np.min(self.euclidean_distance(self.obj.centre_list[0:i,:], rand_coord)) # useless min call? 
-                print('t', t)
+                #print('t', t)
                 if t > threshold:
                     print("assigned centre", i)
                     break
@@ -324,7 +328,7 @@ class DBMOPP:
 
         if (too_long): # Took longer than max_elapsed... Still very dump
             print('restarting attractor region placement with smaller radius...\n')
-            return self.place_regions(n, r*0.95)
+            return self.place_regions(n, r*0.75)
         print("clist", self.obj.centre_list)
         return r
 
@@ -337,7 +341,7 @@ class DBMOPP:
         l = self.nlp + self.ngp
         ini_locs = np.zeros((l, 2, self.k))
 
-        self.obj.attractor_regions = np.array([None] * l + self.ndr)
+        self.obj.attractor_regions = np.array([None] * (l + self.ndr))
 
         for i in np.arange(0, l):
             self.obj.attractor_regions[i] = attractorRegion()
@@ -852,15 +856,15 @@ class DBMOPP:
         variables = variable_builder(var_names, initial_values, lower_bounds, upper_bounds)
 
         constraints = None # DUNNO // Maybe from evaluate
-        return MOProblem(objectives, variables, constraints)
-
+        return MOProblem(objectives, variables, constraints)  
+    
 
 if __name__=="__main__":
-    n_objectives = 10
-    n_variables = 10
-    n_local_pareto_regions = 1 # actually works but not sure if correct, Also screws up the some of the region annotations
+    n_objectives = 4 
+    n_variables = 3
+    n_local_pareto_regions = 9 # actually works but not sure if correct, Also screws up the some of the region annotations
     n_disconnected_regions = 0 # atm wont work is > 0
-    n_global_pareto_regions = 3
+    n_global_pareto_regions = 1  
     pareto_set_type = 0
     problem = DBMOPP(
         n_objectives,
