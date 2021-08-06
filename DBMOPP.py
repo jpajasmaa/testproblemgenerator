@@ -2,11 +2,13 @@ from typing import Dict, Tuple
 import numpy as np
 from scipy.spatial import ConvexHull
 from scipy.optimize import linprog
-from time import localtime, time
+from time import time
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
-from numpy import divide, matlib # i guess we could implement repmat ourselves
+from matplotlib.patches import Circle
+from numpy import arange, matlib # i guess we could implement repmat ourselves
 from desdeo_problem.problem import *
+import matplotlib.animation as animation
+
 
 # utilities
 # TODO: figure out the structure
@@ -177,6 +179,7 @@ class DBMOPP:
             msg += f"Number of samples should be at least 1000, was {nm}.\n"
         return msg
     
+    #MOVE
     def get_random_angles(self, n):
         return np.random.rand(n,1) * 2 * np.pi
     
@@ -188,9 +191,10 @@ class DBMOPP:
     # HIDDEN METHODS, not really but in MATLAB :D
 
     def evaluate(self, x):
-        # x = np.atleast_2d(x)
+        x = np.atleast_2d(x)
         self.check_valid_length(x)
         z = self.get_2D_version(x)
+        print(z)
         return self.evaluate_2D(z)
 
     def evaluate_2D(self, x) -> Dict:
@@ -241,11 +245,11 @@ class DBMOPP:
         """
         
         """
-        if self.get_hard_constraint_violation():
+        if self.get_hard_constraint_violation(x):
             return False
-        if self.get_soft_constraint_violation():
+        if self.get_soft_constraint_violation(x):
             return False
-        return self.is_in_limited_region()
+        return self.is_in_limited_region(x)["in_pareto_region"]
 
     def in_convex_hull_of_attractor_region(self, y: np.ndarray):
         """
@@ -253,7 +257,7 @@ class DBMOPP:
         """
         print("in_convex_hull_of_attractor_region")
         print("TODO indexi jumppa\n\n")
-        self.check_valid_length()
+        self.check_valid_length(y)
         x = self.get_2D_version(y)
 
         dist = self.euclidean_distance(self.obj.centre_list, x)
@@ -263,9 +267,9 @@ class DBMOPP:
 
 
     def check_valid_length(self, x):
-        # x = np.atleast_2d(x)
-        if (x.shape[0] != self.n): 
-            msg = f"Number of design variables in the argument does not match that required in the problem instance, was {x.shape[0]}, should be {self.n}"
+        x = np.atleast_2d(x)
+        if (x.shape[1] != self.n): 
+            msg = f"Number of design variables in the argument does not match that required in the problem instance, was {x.shape[1]}, should be {self.n}"
             raise Exception(msg)
 
     def set_up_attractor_centres(self):
@@ -479,7 +483,7 @@ class DBMOPP:
                 self.obj.bracketing_locations_upper[i,:] = calc_location(i, r_angles[index+1])
 
             elif self.pareto_set_type == 1:
-                if index == self.ngp-1:
+                if index == self.ngp -1:
                     self.obj.bracketing_locations_lower[i,:] = calc_location(i, r_angles[2])
                     self.obj.bracketing_locations_upper[i,:] = calc_location(i, r_angles[n])
                 else:
@@ -518,8 +522,6 @@ class DBMOPP:
             self.obj.soft_constraint_centres = self.obj.centre_list
             self.obj.soft_constraint_radii = self.obj.centre_radii * r
 
-         
-
     def place_discontinunities_neutral_and_checker_constraints(self):
         pass
 
@@ -527,13 +529,22 @@ class DBMOPP:
         pass
 
     def get_hard_constraint_violation(self, x):
-        print("get_hard_constraint_violation NOT DONE")
-        return False
+        print("get_hard_constraint_violation")
+        in_hard_constraint_region, _ = self.in_region_excluding_boundary(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, x)
+        return in_hard_constraint_region
 
     def get_soft_constraint_violation(self, x):
-        print("get_soft_constraint_violation NOT DONE")
+        print("get_soft_constraint_violation")
+        in_soft_constraint_region, d = self.in_region(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, x)
+        if in_soft_constraint_region:
+            k = np.sum(d < self.obj.soft_constraint_radii)
+            if k > 0:
+                c = d - self.obj.soft_constraint_radii
+                c = c * k
+                return np.max(c)
         return False
 
+    #MOVE
     def assign_design_dimension_projection(self):
         """
         if more than two design dimensions in problem, need to assign
@@ -548,10 +559,11 @@ class DBMOPP:
             else: 
                 half = int(np.ceil(self.n/2))
                 mask = mask[:half] # Take half first elements
-            self.obj.pi1 = np.array([False]*self.n)
+            self.obj.pi1 = np.zeros(self.n)
             self.obj.pi1[mask] = True
             self.obj.pi2 = np.logical_not(self.obj.pi1)
-
+            
+    #MOVE
     def get_2D_version(self, x):
         """
         Project n > 2 dimensional vector to 2-dimensional space
@@ -562,7 +574,7 @@ class DBMOPP:
         Returns:
             np.ndarray: A 2-dimensional vector
         """
-        if (x.shape[0] <= 2):
+        if (x.shape[1] <= 2):
             print("Skipping projection, vector already 2 dimensional or less")
             return x
         l = np.divide(np.dot(x, self.obj.pi1), np.sum(self.obj.pi1)) # Left side of vector
@@ -606,25 +618,25 @@ class DBMOPP:
         
         """
         print("is_in_limited_region")
-        print("TODO: between_lines_rooted_at_pivot, verify that does the same thing\n\n")
         ans = {
             "in_pareto_region": False,
             "in_hull": False,
             "index": -1
         }
         dist = self.euclidean_distance(self.obj.centre_list, x)
-        I = np.where(dist <= (self.obj.centre_radii + eps))
+        I = np.where(dist <= np.concatenate(self.obj.centre_radii + eps))
         I = np.concatenate(I)
-        if I.size > 0: # is not empty 
-            if self.nlp < I[0] <= self.nlp + self.ngp:
+        if len(I) > 0: # is not empty 
+            i = I[0]
+            if self.nlp < i <= self.nlp + self.ngp:
                 if self.constraint_type in [2,6]: 
                     # Smaller of dist
-                    r = np.min(np.abs(dist[I[0]]), np.abs(self.obj.centre_radii[I[0]]))
+                    r = np.min(np.abs(dist[i]), np.abs(self.obj.centre_radii[i]))
                     # THIS if + elif could be a oneliner ans["inhull"] = np.abs .. or in_hull
-                    if np.abs(dist[I[0]]) - self.obj.centre_radii(I(0)) < 1e4 * eps * r:
+                    if np.abs(dist[i]) - self.obj.centre_radii[i] < 1e4 * eps * r:
                         ans["in_hull"] = True
-                    elif self.in_hull(x, self.obj.attractor_regions):
-                        ans["in_hull"] = True 
+                elif self.in_hull(x, self.obj.attractor_regions[i].locations[self.obj.attractor_regions[i].convhull.simplices]):
+                    ans["in_hull"] = True 
         
         if self.pareto_set_type == 0 or self.constraint_type in [2,6]:
             ans["in_pareto_region"] = ans["in_hull"]
@@ -632,7 +644,12 @@ class DBMOPP:
         else:
             if ans["in_hull"]:
                 ans["index"] = I[0]
-                ans["in_pareto_region"] = self.between_lines_rooted_at_pivot(x,x,x) # TODO
+                ans["in_pareto_region"] = self.between_lines_rooted_at_pivot(
+                    x,
+                    self.obj.pivot_locations[I[0], :],
+                    self.obj.bracketing_locations_lower[I[0],:],
+                    self.obj.bracketing_locations_upper[I[0],:],
+                )
                 if self.pareto_set_type == 1:
                     if I[0] == self.nlp + self.ngp:
                         ans["in_pareto_region"] = not ans["in_pareto_region"]
@@ -667,23 +684,30 @@ class DBMOPP:
         pass
 
     
-    # DBMOPP methods
+    # DBMOPP methods #MOVE
 
     def in_region(self, centres, radii, x) -> Tuple[bool, np.ndarray]:
         if centres is None or len(centres) < 1: return (False, np.array([]))
         dist = self.euclidean_distance(centres, x)
         in_region = np.any(dist <= radii)
         return (in_region, dist)
+    
+    # this and above could be combined/one method
+    def in_region_excluding_boundary(self, centres, radii, x):
+        if (centres is None or len(centres) < 1): return (False, np.array([]))
+        d = self.euclidean_distance(centres, x)
+        in_region = np.any(d < radii)
+        return (in_region, d)
 
     def between_lines_rooted_at_pivot(self, x, pivot_loc, loc1, loc2) -> bool:
         """
         Plaaplaa
         """
-        d1 = ( x(1) - pivot_loc(1))*(pivot_loc(2) - pivot_loc(2))
-        - (x(2) - pivot_loc(2))*(loc1(1) - pivot_loc(1))
+        d1 = ( x[0] - pivot_loc[0])*(pivot_loc[1] - pivot_loc[1])
+        - (x[1] - pivot_loc[1])*(loc1[0] - pivot_loc[0])
 
-        d2 = ( x(1) - pivot_loc(1))*(pivot_loc(2) - pivot_loc(2))
-        - (x(2) - pivot_loc(2))*(loc2(1) - pivot_loc(1))
+        d2 = ( x[0] - pivot_loc[0])*(pivot_loc[1] - pivot_loc[1])
+        - (x[1] - pivot_loc[1])*(loc2[0] - pivot_loc[0])
 
         return d1 == 0 or d2 == 0 or np.sign(d1) != np.sign(d2)
     
@@ -715,15 +739,15 @@ class DBMOPP:
         def plot_constraint_regions(centres, radii, color):
             if radii is None: return
             for i in range(len(radii)):
-                x = centres[i,0] - radii[i]
-                y = centres[i,1] - radii[i]
-                r = radii[i] * 2
-                rectangle = Rectangle((x,y), r, r, fc = 'none', color=color, linewidth = 5)
+                x = centres[i,0]
+                y = centres[i,1]
+                r = radii[i]
+                rectangle = Circle((x,y), r, fc = color, fill = True, alpha = 0.5)
                 ax.add_patch(rectangle)
             
-        plot_constraint_regions(self.obj.hard_constraint_radii, self.obj.hard_constraint_centres, 'yellow')
-        plot_constraint_regions(self.obj.soft_constraint_radii, self.obj.soft_constraint_centres, 'orange')
-        plot_constraint_regions(self.obj.neutral_region_radii, self.obj.neutral_region_centres, 'grey')
+        plot_constraint_regions(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, 'black')
+        plot_constraint_regions(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, 'orange')
+        plot_constraint_regions(self.obj.neutral_region_centres, self.obj.neutral_region_radii, 'grey')
 
         # PLOT DISCONNECTED PENALTY
         print("disconnected Pareto penalty regions not yet plotted. THIS IS NOT IMPLEMENTED IN MATLAB")
@@ -738,10 +762,27 @@ class DBMOPP:
                 ax.annotate(i, (locs[j,0], locs[j,1]))
 
         plt.show()
+    
+    def plot_pareto_set_members(self, resolution = 500):
+        if resolution < 1: 
+            raise Exception("Cannot grid the space with a resolution less than 1")
+        fig, ax = plt.subplots()
+
+        plt.xlim([-1, 1])
+        plt.ylim([-1,1])
         
+        xy = np.linspace(-1, 1, resolution)
 
+        for x in xy:
+            for y in xy:
+                z = np.array([x,y])
+                if self.is_pareto_2D(z):
+                    ax.scatter(x,y, color='black', s=1)
 
-    # Methods matlab has built in
+        plt.show()
+
+        
+    # Methods matlab has built in, utils #MOVE
 
     def euclidean_distance(self, x1, x2):
         return np.sqrt(np.power(np.sum(x1-x2,axis = -1), 2))
@@ -775,69 +816,13 @@ class DBMOPP:
         Returns:
             bool: is x inside the convex hull given by points 
         """
-        n_points = len(points)
+        p = (np.concatenate(points)) # wont work for most cases?
+        n_points = len(p)
         c = np.zeros(n_points)
-        A = np.r_[points.T,np.ones((1,n_points))]
+        A = np.r_[p.T,np.ones((1,n_points))]
         b = np.r_[x, np.ones(1)]
         lp = linprog(c, A_eq=A, b_eq=b)
         return lp.success
-
-
-    # THESE WERE NOT IN THE MATLAB CODE BUT IN THE ARTICLE
-    
-    def assign_attractor_region_rotations(self):
-        """
-        Set up rotations to be used by each attractor region
-
-        this obj.ParetoAngles and obj.rotations attributes,
-        """
-        pass
-
-
-    def uniform_sample_from_2D_domain(self):
-        """
-        Generate 'nm' number of uniform samples in 2D
-
-        Returns:
-            np.ndarray: uniform 2D samples
-        """
-        pass
-
-    def remove_samples_in_attractor_regions(self, M: np.ndarray):
-        """
-        Remove any samples falling in attractor regions
-
-        Args:
-            M (np.ndarray): Uniform 2D samples
-        
-        Returns:
-            np.ndarray: M without samples in attractor regions
-        """
-        pass
-
-    def place_checker_constraint_locations(self, M: np.ndarray):
-        """
-        Place checker constraint regions
-
-        Args: 
-            M (np.ndarray): Uniform 2D samples
-        
-        Returns:
-            np.ndarray: idk
-        """
-        pass
-
-    def place_neutral_regions(self, M: np.ndarray):
-        """
-        Place neural regions
-        """
-        pass
-
-    def place_discontinuous_regions(self):
-        """
-        Place regions whose boundaries cause discontinuities in objectives
-        """
-        pass
     
     # Pseudo code in the article
     def generate_problem(self):
@@ -847,25 +832,33 @@ class DBMOPP:
         Returns:
             MOProblem: A test problem
         """
-        objectives = [ScalarObjective("objective", lambda x: self.evaluate(x)['obj_vector'])]
+
+        objectives = [ScalarObjective(f"objective{i}", lambda x: self.evaluate(x)['obj_vector'][i]) for i in range(self.k)]
 
         var_names = [f'x{i}' for i in range(self.n)]
-        initial_values = (np.random.rand(self.n) * 2) - 1
+        initial_values = (np.random.rand(self.n,1) * 2) - 1
         lower_bounds = np.ones(self.n) * -1
         upper_bounds = np.ones(self.n)
         variables = variable_builder(var_names, initial_values, lower_bounds, upper_bounds)
 
-        constraints = None # DUNNO // Maybe from evaluate
+        cs = lambda x, _y: self.evaluate(x)['soft_constr_viol'] * -1
+        ch = lambda x, _y: self.evaluate(x)['hard_constr_viol'] * -1
+
+        constraints = [
+            ScalarConstraint("hard constraint", self.n, self.k, ch),
+            ScalarConstraint("soft constraint", self.n, self.k, cs)
+        ]
         return MOProblem(objectives, variables, constraints)  
     
 
 if __name__=="__main__":
-    n_objectives = 4 
-    n_variables = 3
-    n_local_pareto_regions = 9 # actually works but not sure if correct, Also screws up the some of the region annotations
+    n_objectives = 5
+    n_variables = 5
+    n_local_pareto_regions = 0 # actually works but not sure if correct
     n_disconnected_regions = 0 # atm wont work is > 0
-    n_global_pareto_regions = 1  
-    pareto_set_type = 0
+    n_global_pareto_regions = 6
+    pareto_set_type = 1
+    constraint_type = 2
     problem = DBMOPP(
         n_objectives,
         n_variables,
@@ -874,15 +867,17 @@ if __name__=="__main__":
         n_global_pareto_regions,
         0,
         pareto_set_type,
-        0, 0, False, False, 0, 10000
+        constraint_type, 0, False, False, 0, 10000
     )
     print("Initializing works!")
-    x = np.random.rand(n_variables)
+    x = np.random.rand(1, n_variables)
     print(problem.evaluate(x))
     moproblem = problem.generate_problem()
 
     # wont work because x will be converted to 2d array and then some of the indexing fail. 
     # Fix: Either check for 2d or modify the existing code to use the same kind of arrays as desdeo
-    # print(moproblem.evaluate(x)) 
+
+    print(moproblem.evaluate(x)) 
 
     problem.plot_problem_instance()
+    problem.plot_pareto_set_members(125)
