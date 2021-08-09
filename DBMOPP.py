@@ -1,7 +1,6 @@
+from utilities import *
 from typing import Dict, Tuple
 import numpy as np
-from scipy.spatial import ConvexHull
-from scipy.optimize import linprog
 from time import time
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
@@ -177,14 +176,11 @@ class DBMOPP:
         if nm < 1000:
             msg += f"Number of samples should be at least 1000, was {nm}.\n"
         return msg
-    
-    #MOVE
-    def get_random_angles(self, n):
-        return np.random.rand(n,1) * 2 * np.pi
+
     
     def is_pareto_set_member(self, z):
         self.check_valid_length(z)
-        x = self.get_2D_version(z)
+        x = get_2D_version(z, self.obj.pi1, self.obj.pi2)
         return self.is_pareto_2D(x)
     
     # HIDDEN METHODS, not really but in MATLAB :D
@@ -192,7 +188,7 @@ class DBMOPP:
     def evaluate(self, x):
         x = np.atleast_2d(x)
         self.check_valid_length(x)
-        z = self.get_2D_version(x)
+        z = get_2D_version(x, self.obj.pi1, self.obj.pi2)
         print(z)
         return self.evaluate_2D(z)
 
@@ -234,7 +230,7 @@ class DBMOPP:
         
         # Neither constraint breached
 
-        if self.in_region(self.obj.neutral_region_centres, self.obj.neutral_region_radii, x)[0]:
+        if in_region(self.obj.neutral_region_centres, self.obj.neutral_region_radii, x)[0]:
             ans["obj_vector"] = self.obj.neutral_region_objective_values
         else: 
             ans["obj_vector"] = self.get_objectives(x)
@@ -250,6 +246,7 @@ class DBMOPP:
             return False
         return self.is_in_limited_region(x)["in_pareto_region"]
 
+    # could be moved...
     def in_convex_hull_of_attractor_region(self, y: np.ndarray):
         """
         
@@ -257,13 +254,12 @@ class DBMOPP:
         print("in_convex_hull_of_attractor_region")
         print("TODO indexi jumppa\n\n")
         self.check_valid_length(y)
-        x = self.get_2D_version(y)
+        x = get_2D_version(y, self.obj.pi1, self.obj.pi2)
 
-        dist = self.euclidean_distance(self.obj.centre_list, x)
+        dist = euclidean_distance(self.obj.centre_list, x)
         if np.any(dist < self.obj.centre_radii):
-            return self.in_hull(x, self.obj.attractor_regions) # TODO indeksijumppa
+            return in_hull(x, self.obj.attractor_regions) # TODO indeksijumppa
         return False
-
 
     def check_valid_length(self, x):
         x = np.atleast_2d(x)
@@ -320,7 +316,7 @@ class DBMOPP:
         for i in np.arange(1, n):
             while True:
                 rand_coord = (np.random.rand(1, 2)*2*effective_bound) - effective_bound
-                t = np.min(self.euclidean_distance(self.obj.centre_list[0:i,:], rand_coord)) # useless min call? 
+                t = np.min(euclidean_distance(self.obj.centre_list[0:i,:], rand_coord)) # useless min call? 
                 #print('t', t)
                 if t > threshold:
                     print("assigned centre", i)
@@ -363,7 +359,7 @@ class DBMOPP:
             self.obj.attractor_regions[i].centre = self.obj.centre_list[i,:] # matlab comments these two as duplicate storage.. 
             self.obj.attractor_regions[i].radius = self.obj.centre_radii[i]  # we prob should get rid of these later
             # need to feed the points in right shape 
-            self.obj.attractor_regions[i].convhull = self.convhull(locs)
+            self.obj.attractor_regions[i].convhull = convhull(locs)
 
             for k in np.arange(self.k):
                 ini_locs[i,:,k] = locs[k,:]
@@ -390,19 +386,17 @@ class DBMOPP:
             self.obj.attractor_regions[i].locations = locs[I[:n_include], :]
             self.obj.attractor_regions[i].objective_indices = I[:n_include]
             self.obj.attractor_regions[i].radius = self.obj.centre_radii[i]
-            self.obj.attractor_regions[i].convhull = self.convhull(locs)
+            self.obj.attractor_regions[i].convhull = convhull(locs)
             for k in range(n_include):
                 self.obj.attractors[i] = np.vstack((self.obj.attractors[i], locs[I[k], :]))
-
-
 
     def initialize(self):
         #place attractor centres for regions defining attractor points
         self.set_up_attractor_centres()
         #set up angles for attractors on regin cicumferences and arbitrary rotations for regions
-        self.obj.pareto_angles = self.get_random_angles(self.k) # arbitrary angles for Pareto set
+        self.obj.pareto_angles = get_random_angles(self.k) # arbitrary angles for Pareto set
         print(self.obj.centre_radii)
-        self.obj.rotations = self.get_random_angles(self.obj.centre_radii.shape[0])
+        self.obj.rotations = get_random_angles(self.obj.centre_radii.shape[0])
         # now place attractors
         self.place_attractors()
         if self.pareto_set_type != 0:
@@ -528,11 +522,11 @@ class DBMOPP:
         pass
 
     def get_hard_constraint_violation(self, x):
-        in_hard_constraint_region, _ = self.in_region_excluding_boundary(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, x)
+        in_hard_constraint_region, _ = in_region_excluding_boundary(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, x)
         return in_hard_constraint_region
 
     def get_soft_constraint_violation(self, x):
-        in_soft_constraint_region, d = self.in_region(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, x)
+        in_soft_constraint_region, d = in_region(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, x)
         if in_soft_constraint_region:
             k = np.sum(d < self.obj.soft_constraint_radii)
             if k > 0:
@@ -541,7 +535,7 @@ class DBMOPP:
                 return np.max(c)
         return False
 
-    #MOVE
+    # MAYBE MOVE, alot of stuff object variables though
     def assign_design_dimension_projection(self):
         """
         if more than two design dimensions in problem, need to assign
@@ -559,24 +553,6 @@ class DBMOPP:
             self.obj.pi1 = np.zeros(self.n)
             self.obj.pi1[mask] = True
             self.obj.pi2 = np.logical_not(self.obj.pi1)
-            
-    #MOVE
-    def get_2D_version(self, x):
-        """
-        Project n > 2 dimensional vector to 2-dimensional space
-
-        Args:
-            x (np.ndarray): A given vector to project to 2-dimensional space
-        
-        Returns:
-            np.ndarray: A 2-dimensional vector
-        """
-        if (x.shape[1] <= 2):
-            print("Skipping projection, vector already 2 dimensional or less")
-            return x
-        l = np.divide(np.dot(x, self.obj.pi1), np.sum(self.obj.pi1)) # Left side of vector
-        r = np.divide(np.dot(x, self.obj.pi2), np.sum(self.obj.pi2)) # Right side of vector
-        return np.hstack((l, r))
 
     def get_minimun_distance_to_attractors(self, x: np.ndarray):
         """
@@ -584,7 +560,7 @@ class DBMOPP:
         """
         y = np.zeros(self.k)
         for i in range(self.k):
-            d = self.euclidean_distance(self.obj.attractors[i], x)
+            d = euclidean_distance(self.obj.attractors[i], x)
             y[i] = np.min(d)
         y *= self.obj.rescaleMultiplier
         y += self.obj.rescaleConstant
@@ -620,7 +596,7 @@ class DBMOPP:
             "in_hull": False,
             "index": -1
         }
-        dist = self.euclidean_distance(self.obj.centre_list, x)
+        dist = euclidean_distance(self.obj.centre_list, x)
         I = np.where(dist <= np.concatenate(self.obj.centre_radii + eps))
         I = np.concatenate(I)
         if len(I) > 0: # is not empty 
@@ -632,7 +608,7 @@ class DBMOPP:
                     # THIS if + elif could be a oneliner ans["inhull"] = np.abs .. or in_hull
                     if np.abs(dist[i]) - self.obj.centre_radii[i] < 1e4 * eps * r:
                         ans["in_hull"] = True
-                elif self.in_hull(x, self.obj.attractor_regions[i].locations[self.obj.attractor_regions[i].convhull.simplices]):
+                elif in_hull(x, self.obj.attractor_regions[i].locations[self.obj.attractor_regions[i].convhull.simplices]):
                     ans["in_hull"] = True 
         
         if self.pareto_set_type == 0 or self.constraint_type in [2,6]:
@@ -641,7 +617,7 @@ class DBMOPP:
         else:
             if ans["in_hull"]:
                 ans["index"] = I[0]
-                ans["in_pareto_region"] = self.between_lines_rooted_at_pivot(
+                ans["in_pareto_region"] = between_lines_rooted_at_pivot(
                     x,
                     self.obj.pivot_locations[I[0], :],
                     self.obj.bracketing_locations_lower[I[0],:],
@@ -652,62 +628,24 @@ class DBMOPP:
                         ans["in_pareto_region"] = not ans["in_pareto_region"]
         return ans
 
-
-
     def update_with_discontinuity(self, x, y):
         if self.obj.discontinuous_region_centres is None: return y # or len = 0 ?
-        dist = self.euclidean_distance(self.obj.discontinuous_region_centres, x)
+        dist = euclidean_distance(self.obj.discontinuous_region_centres, x)
         dist[dist >= self.obj.discontinuous_region_radii] = 0 
         if np.sum(dist) > 0: # Could check more efficiently
             i = np.argmin(dist) # Umm should it be min of a value which is greater than 0
             y = y + self.obj.discontinuous_region_objective_value_offset[i,:]
         return y
 
-
     def update_with_neutrality(self, x, y):
         if self.obj.neutral_region_centres is None: return y # or len = 0 ?
-        dist = self.euclidean_distance(self.obj.neutral_region_centres, x)
+        dist = euclidean_distance(self.obj.neutral_region_centres, x)
         dist[dist >= self.obj.neutral_region_radii] = 0 
         if np.sum(dist) > 0: # Could check more efficiently
             i = np.argmin(dist) # Umm should it be min of a value which is greater than 0
             y = y + self.obj.neutral_region_objective_values[i,:]
         return y
 
-
-    def set_objective_rescaling_variables(self):
-        """
-        Set offset and multiplier for objectives
-        """
-        pass
-
-    
-    # DBMOPP methods #MOVE
-
-    def in_region(self, centres, radii, x) -> Tuple[bool, np.ndarray]:
-        if centres is None or len(centres) < 1: return (False, np.array([]))
-        dist = self.euclidean_distance(centres, x)
-        in_region = np.any(dist <= radii)
-        return (in_region, dist)
-    
-    # this and above could be combined/one method
-    def in_region_excluding_boundary(self, centres, radii, x):
-        if (centres is None or len(centres) < 1): return (False, np.array([]))
-        d = self.euclidean_distance(centres, x)
-        in_region = np.any(d < radii)
-        return (in_region, d)
-
-    def between_lines_rooted_at_pivot(self, x, pivot_loc, loc1, loc2) -> bool:
-        """
-        Plaaplaa
-        """
-        d1 = ( x[0] - pivot_loc[0])*(pivot_loc[1] - pivot_loc[1])
-        - (x[1] - pivot_loc[1])*(loc1[0] - pivot_loc[0])
-
-        d2 = ( x[0] - pivot_loc[0])*(pivot_loc[1] - pivot_loc[1])
-        - (x[1] - pivot_loc[1])*(loc2[0] - pivot_loc[0])
-
-        return d1 == 0 or d2 == 0 or np.sign(d1) != np.sign(d2)
-    
     # PLOTTING
 
     def plot_problem_instance(self):
@@ -774,6 +712,7 @@ class DBMOPP:
             for j in range(res):
                 decision_vector = np.hstack((xy[i], xy[j]))
                 obj_vector = self.evaluate_2D(decision_vector)["obj_vector"]
+                print(obj_vector)
                 z[i, j] = obj_vector[index]
   
         fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
@@ -783,7 +722,6 @@ class DBMOPP:
         surf = ax.plot_surface(x, y, z, cmap = cm.coolwarm)
         fig.colorbar(surf, shrink=0.5, aspect=5)
         plt.show()
-
 
     def plot_pareto_set_members(self, resolution = 500):
         if resolution < 1: 
@@ -802,51 +740,7 @@ class DBMOPP:
                     ax.scatter(x,y, color='black', s=1)
 
         plt.show()
-
-        
-    # Methods matlab has built in, utils #MOVE
-
-    def euclidean_distance(self, x1, x2):
-        return np.sqrt(np.power(np.sum(x1-x2,axis = -1), 2))
-
-    def repmat(t, x, y): # could do this...
-        pass 
-
-    def convhull(self,points):
-        """
-        Construct a convex hull of given set of points
-
-        Args:
-            points (np.ndarray): the points used to construct the convex hull
-        
-        Returns:
-            np.ndarray: The indices of the simplices that form the convex hull
-        """
-        # TODO validate that enough unique points and so on
-        hull = ConvexHull(points)
-        return hull
-
     
-    def in_hull(self, x: np.ndarray, points: np.ndarray):
-        """
-        Is a point inside a convex hull 
-
-        Args:
-            x (np.ndarray): The point that is checked
-            points (np.ndarray): The point cloud of the convex hull
-        
-        Returns:
-            bool: is x inside the convex hull given by points 
-        """
-        p = (np.concatenate(points)) # wont work for most cases?
-        n_points = len(p)
-        c = np.zeros(n_points)
-        A = np.r_[p.T,np.ones((1,n_points))]
-        b = np.r_[x, np.ones(1)]
-        lp = linprog(c, A_eq=A, b_eq=b)
-        return lp.success
-    
-    # Pseudo code in the article
     def generate_problem(self):
         """
         Generate the test problem
@@ -874,7 +768,7 @@ class DBMOPP:
     
 
 if __name__=="__main__":
-    n_objectives = 5
+    n_objectives = 3 # qhull error < 3 ? 
     n_variables = 5
     n_local_pareto_regions = 0 # actually works but not sure if correct
     n_disconnected_regions = 0 # atm wont work is > 0
