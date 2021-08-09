@@ -84,10 +84,7 @@ def between_lines_rooted_at_pivot(x, pivot_loc, loc1, loc2) -> bool:
     """
     Plaaplaa
     """
-    d1 = ( x[0] - pivot_loc[0])*(pivot_loc[1] - pivot_loc[1])
-    - (x[1] - pivot_loc[1])*(loc1[0] - pivot_loc[0])
-
-    d2 = ( x[0] - pivot_loc[0])*(pivot_loc[1] - pivot_loc[1])
-    - (x[1] - pivot_loc[1])*(loc2[0] - pivot_loc[0])
+    d1 = ( x[0] - pivot_loc[0])*(loc1[1] - pivot_loc[1]) - (x[1] - pivot_loc[1])*(loc1[0] - pivot_loc[0])
+    d2 = ( x[0] - pivot_loc[0])*(loc2[1] - pivot_loc[1]) - (x[1] - pivot_loc[1])*(loc2[0] - pivot_loc[0])
 
     return d1 == 0 or d2 == 0 or np.sign(d1) != np.sign(d2)

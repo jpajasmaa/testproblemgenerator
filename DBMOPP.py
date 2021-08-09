@@ -619,7 +619,7 @@ class DBMOPP:
         """
         
         """
-        print("is_in_limited_region")
+        #print("is_in_limited_region")
         ans = {
             "in_pareto_region": False,
             "in_hull": False,
@@ -628,6 +628,7 @@ class DBMOPP:
         dist = euclidean_distance(self.obj.centre_list, x)
         I = np.where(dist <= np.concatenate(self.obj.centre_radii + eps))
         I = np.concatenate(I)
+        
         if len(I) > 0: # is not empty 
             i = I[0]
             if self.nlp < i <= self.nlp + self.ngp:
@@ -652,9 +653,11 @@ class DBMOPP:
                     self.obj.bracketing_locations_lower[I[0],:],
                     self.obj.bracketing_locations_upper[I[0],:],
                 )
+                print("dis ans", ans)
                 if self.pareto_set_type == 1:
                     if I[0] == self.nlp + self.ngp:
-                        ans["in_pareto_region"] = not ans["in_pareto_region"]
+                        ans["in_pareto_region"] = not ans["in_pareto_region"] # special case where last region is split at the two sides, should not get here everytime
+
         return ans
 
 
@@ -727,7 +730,7 @@ class DBMOPP:
                 ax.scatter(locs[j,0], locs[j,1], color = 'b')
                 ax.annotate(i, (locs[j,0], locs[j,1]))
 
-        plt.show()
+        #plt.show()
     
     def plot_landscape_for_single_objective(self, index, res = 500):
         if res < 1:
@@ -752,14 +755,14 @@ class DBMOPP:
         ax.view_init(elev=90, azim=-90)
         surf = ax.plot_surface(x, y, z, cmap = cm.plasma)
         fig.colorbar(surf, shrink=0.5, aspect=5)
-        plt.show()
+        #plt.show()
 
     def plot_pareto_set_members(self, resolution = 500):
         if resolution < 1: 
             raise Exception("Cannot grid the space with a resolution less than 1")
         fig, ax = plt.subplots()
 
-        plt.xlim([-1, 1])
+        plt.xlim([-1,1])
         plt.ylim([-1,1])
         
         xy = np.linspace(-1, 1, resolution)
@@ -770,7 +773,7 @@ class DBMOPP:
                 if self.is_pareto_2D(z):
                     ax.scatter(x,y, color='black', s=1)
 
-        plt.show()
+        #plt.show()
     
     def plot_dominance_landscape(self, res = 500, moore_neighbourhood = True):
         if res < 1: 
@@ -817,12 +820,12 @@ class DBMOPP:
 
 if __name__=="__main__":
     n_objectives = 3 # qhull error < 3 ? 
-    n_variables = 5
-    n_local_pareto_regions = 5 # actually works but not sure if correct
+    n_variables = 2
+    n_local_pareto_regions = 2 # actually works but not sure if correct
     n_disconnected_regions = 0 # atm wont work is > 0
-    n_global_pareto_regions = 6
-    pareto_set_type = 0
-    constraint_type = 0
+    n_global_pareto_regions = 2 # seems like nlp <= gpr
+    pareto_set_type = 0 
+    constraint_type = 0 
     problem = DBMOPP(
         n_objectives,
         n_variables,
@@ -844,5 +847,8 @@ if __name__=="__main__":
     print(moproblem.evaluate(x)) 
 
     problem.plot_problem_instance()
-    problem.plot_pareto_set_members(125)
-    problem.plot_landscape_for_single_objective(0, 100)
+    problem.plot_pareto_set_members(300)
+    #problem.plot_landscape_for_single_objective(0, 100)
+
+    # show all plots
+    plt.show()
