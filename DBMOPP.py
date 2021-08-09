@@ -205,23 +205,21 @@ class DBMOPP:
                 'soft_constr_viol' : boolean, soft constraint violation
                 'hard_constr_viol' : boolean, hard constraint violation
         """
-        # x = np.atleast_2d(x)
 
         ans = {
             "obj_vector": np.array([None] * self.k),
             "soft_constr_viol": False,
-            "hard_constr_viol": False,
+            "hard_constr_viol": self.get_hard_constraint_violation(x),
         }
-        if self.get_hard_constraint_violation(x):
-            ans["hard_constr_viol"] = True
+        if ans["hard_constr_viol"]:
             if self.constraint_type == 3:
                 if self.in_convex_hull_of_attractor_region(x):
                     ans["hard_constr_viol"] = False
                     ans["obj_vector"] = self.get_objectives(x)
             return ans
         
-        if self.get_soft_constraint_violation(x):
-            ans["soft_constr_viol"] = True
+        ans["soft_constr_viol"] =  self.get_soft_constraint_violation(x)
+        if ans["soft_constr_viol"]:
             if (self.constraint_type == 7):
                 if (self.in_convex_hull_of_attractor_region(x)):
                     ans["soft_constr_viol"] = False
@@ -229,7 +227,7 @@ class DBMOPP:
             return ans
         
         # Neither constraint breached
-
+        print("neither")
         if in_region(self.obj.neutral_region_centres, self.obj.neutral_region_radii, x)[0]:
             ans["obj_vector"] = self.obj.neutral_region_objective_values
         else: 
@@ -560,6 +558,7 @@ class DBMOPP:
         """
         y = np.zeros(self.k)
         for i in range(self.k):
+            print(self.obj.attractors[i])
             d = euclidean_distance(self.obj.attractors[i], x)
             y[i] = np.min(d)
         y *= self.obj.rescaleMultiplier
@@ -773,7 +772,7 @@ if __name__=="__main__":
     n_local_pareto_regions = 0 # actually works but not sure if correct
     n_disconnected_regions = 0 # atm wont work is > 0
     n_global_pareto_regions = 6
-    pareto_set_type = 1
+    pareto_set_type = 0
     constraint_type = 0
     problem = DBMOPP(
         n_objectives,

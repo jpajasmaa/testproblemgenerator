@@ -22,7 +22,8 @@ def get_2D_version(x, pi1, pi2):
     return np.hstack((l, r))
 
 def euclidean_distance(x1, x2):
-        return np.sqrt(np.power(np.sum(x1-x2,axis = -1), 2))
+    return np.linalg.norm(x1-x2, axis = -1)
+    #return np.sqrt(np.power(np.sum((x1-x2),axis = -1), 2))
 
 def repmat(t, x, y): # could do this...
     pass 
