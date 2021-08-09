@@ -7,8 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from numpy import arange, matlib # i guess we could implement repmat ourselves
 from desdeo_problem.problem import *
-import matplotlib.animation as animation
-
+from matplotlib import cm
 
 # utilities
 # TODO: figure out the structure
@@ -529,12 +528,10 @@ class DBMOPP:
         pass
 
     def get_hard_constraint_violation(self, x):
-        print("get_hard_constraint_violation")
         in_hard_constraint_region, _ = self.in_region_excluding_boundary(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, x)
         return in_hard_constraint_region
 
     def get_soft_constraint_violation(self, x):
-        print("get_soft_constraint_violation")
         in_soft_constraint_region, d = self.in_region(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, x)
         if in_soft_constraint_region:
             k = np.sum(d < self.obj.soft_constraint_radii)
@@ -763,6 +760,31 @@ class DBMOPP:
 
         plt.show()
     
+    def plot_landscape_for_single_objective(self, index, res = 500):
+        if res < 1:
+            raise Exception("Cannot grid the space with a resolution less than 1")
+        if index not in np.arange(self.k):
+            raise Exception(f"Index should be between 0 and {self.k-1}, was {index}.")
+        
+        xy = np.linspace(-1,1, res)
+        x, y = np.meshgrid(xy, xy)
+
+        z = np.zeros((res, res))
+        for i in range(res):
+            for j in range(res):
+                decision_vector = np.hstack((xy[i], xy[j]))
+                obj_vector = self.evaluate_2D(decision_vector)["obj_vector"]
+                z[i, j] = obj_vector[index]
+  
+        fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+        ax.set_xlim(-1, 1)
+        ax.set_ylim(-1, 1)
+        ax.view_init(elev=90, azim=-90)
+        surf = ax.plot_surface(x, y, z, cmap = cm.coolwarm)
+        fig.colorbar(surf, shrink=0.5, aspect=5)
+        plt.show()
+
+
     def plot_pareto_set_members(self, resolution = 500):
         if resolution < 1: 
             raise Exception("Cannot grid the space with a resolution less than 1")
@@ -858,7 +880,7 @@ if __name__=="__main__":
     n_disconnected_regions = 0 # atm wont work is > 0
     n_global_pareto_regions = 6
     pareto_set_type = 1
-    constraint_type = 2
+    constraint_type = 0
     problem = DBMOPP(
         n_objectives,
         n_variables,
@@ -880,4 +902,5 @@ if __name__=="__main__":
     print(moproblem.evaluate(x)) 
 
     problem.plot_problem_instance()
-    problem.plot_pareto_set_members(125)
+    # problem.plot_pareto_set_members(125)
+    problem.plot_landscape_for_single_objective(0, 100)
