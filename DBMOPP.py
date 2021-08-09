@@ -718,7 +718,7 @@ class DBMOPP:
         ax.set_xlim(-1, 1)
         ax.set_ylim(-1, 1)
         ax.view_init(elev=90, azim=-90)
-        surf = ax.plot_surface(x, y, z, cmap = cm.coolwarm)
+        surf = ax.plot_surface(x, y, z, cmap = cm.plasma)
         fig.colorbar(surf, shrink=0.5, aspect=5)
         plt.show()
 
@@ -740,6 +740,23 @@ class DBMOPP:
 
         plt.show()
     
+    def plot_dominance_landscape(self, res = 500, moore_neighbourhood = True):
+        if res < 1: 
+            raise Exception("Cannot grid the space with a resolution less than 1")
+        
+        xy = np.linspace(-1, 1, res)
+        y = np.zeros((self.k, res, res))
+        for i in range(res):
+            for j in range(res):
+                decision_vector = np.hstack((xy[i], xy[j]))
+                obj_vector = self.evaluate_2D(decision_vector)
+                y[:, i, j] = obj_vector
+
+        return self.plot_dominance_landscape_from_matrix(y, xy, xy, moore_neighbourhood)
+    
+    def plot_dominance_landscape_from_matrix(self, z, x, y, moore_neighbourhood):
+        pass
+
     def generate_problem(self):
         """
         Generate the test problem
