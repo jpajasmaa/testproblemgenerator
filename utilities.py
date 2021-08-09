@@ -38,6 +38,7 @@ def convhull(points):
         np.ndarray: The indices of the simplices that form the convex hull
     """
     # TODO validate that enough unique points and so on
+    print(points)
     hull = ConvexHull(points)
     return hull
 
@@ -66,10 +67,10 @@ def get_random_angles(n):
 
 
 def in_region(centres, radii, x) -> Tuple[bool, np.ndarray]:
-        if centres is None or len(centres) < 1: return (False, np.array([]))
-        dist = euclidean_distance(centres, x)
-        in_region = np.any(dist <= radii)
-        return (in_region, dist)
+    if centres is None or len(centres) < 1: return (False, np.array([]))
+    dist = euclidean_distance(centres, x)
+    in_region = np.any(dist <= radii)
+    return (in_region, dist)
     
 # this and above could be combined/one method
 def in_region_excluding_boundary(centres, radii, x):

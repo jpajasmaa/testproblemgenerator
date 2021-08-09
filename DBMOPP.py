@@ -4,20 +4,26 @@ import numpy as np
 from time import time
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
-from numpy import arange, matlib # i guess we could implement repmat ourselves
+from numpy import matlib # i guess we could implement repmat ourselves
 from desdeo_problem.problem import *
 from matplotlib import cm
 
 # utilities
 # TODO: figure out the structure
 
-class attractorRegion:
-    def __init__(self):
-        self.locations = None
-        self.objective_indices = None
-        self.centre = None
-        self.radius = None
-        self.convhull = None
+class Region:
+    def __init__(self, centre, radius):
+        self.centre = centre
+        self.radius = radius
+
+class attractorRegion(Region):
+    def __init__(self, locations, indices, centre, radius, convhull):
+        self.locations = locations
+        self.objective_indices = indices
+        super().__init__(centre, radius)
+        # self.centre = centre
+        # self.radius = radius
+        self.convhull = convhull
     
     def plot(self, ax, color = 'b'):
         """
@@ -34,16 +40,21 @@ class DBMOPPobject:
     def __init__(self):
         self.rescaleConstant = 0 # What the hell is up with these two attributes
         self.rescaleMultiplier = 1 # They are only used once and even there they do nothing...
-        self.attractors = []
+        self.attractors = [] # GET RID OFF
         self.attractor_regions = [] # array of attractorRegions 
         self.pi1 = None
         self.pi2 = None
         self.neutral_region_objective_values = np.sqrt(8)
-        self.centre_radii = None
+       
         self.pareto_set_indices = 0
-        self.centre_list = None
+
         self.pareto_angles = None
         self.rotations = None
+
+        # region class
+        # self.region = None
+        self.centre_list = None
+        self.centre_radii = None
 
         self.neutral_region_centres = None
         self.neutral_region_radii = None
@@ -128,7 +139,7 @@ class DBMOPP:
 
         self.initialize()
 
-    
+    # DBMOPP
     def _validate_args(
         self,
         k: int,
@@ -177,21 +188,20 @@ class DBMOPP:
             msg += f"Number of samples should be at least 1000, was {nm}.\n"
         return msg
 
-    
+    # DBMOPP
     def is_pareto_set_member(self, z):
         self.check_valid_length(z)
         x = get_2D_version(z, self.obj.pi1, self.obj.pi2)
         return self.is_pareto_2D(x)
-    
-    # HIDDEN METHODS, not really but in MATLAB :D
 
+    # DBMOPP
     def evaluate(self, x):
         x = np.atleast_2d(x)
         self.check_valid_length(x)
         z = get_2D_version(x, self.obj.pi1, self.obj.pi2)
-        print(z)
         return self.evaluate_2D(z)
-
+    
+    # DBMOPP
     def evaluate_2D(self, x) -> Dict:
         """
         Evaluate x in problem instance in 2 dimensions
@@ -234,6 +244,7 @@ class DBMOPP:
             ans["obj_vector"] = self.get_objectives(x)
         return ans
 
+    # DBMOPP
     def is_pareto_2D(self, x: np.ndarray):
         """
         
@@ -244,7 +255,7 @@ class DBMOPP:
             return False
         return self.is_in_limited_region(x)["in_pareto_region"]
 
-    # could be moved...
+    # Attractor region method? 
     def in_convex_hull_of_attractor_region(self, y: np.ndarray):
         """
         
@@ -259,17 +270,17 @@ class DBMOPP:
             return in_hull(x, self.obj.attractor_regions) # TODO indeksijumppa
         return False
 
+    # DBMOPP
     def check_valid_length(self, x):
         x = np.atleast_2d(x)
         if (x.shape[1] != self.n): 
             msg = f"Number of design variables in the argument does not match that required in the problem instance, was {x.shape[1]}, should be {self.n}"
             raise Exception(msg)
 
+    # DBMOPP
     def set_up_attractor_centres(self):
         """
         Calculate max maximum region radius given problem properties
-
-        This aka setUpAttractorCentres
         """
         # number of local PO sets, global PO sets, dominance resistance regions
         n = self.nlp + self.ngp + self.ndr 
@@ -293,6 +304,7 @@ class DBMOPP:
         # save indices of PO set locations
         self.obj.pareto_set_indices = self.nlp + self.ngp
 
+    # DBMOPP
     def place_regions(self, n: int, r: float):
         """
 
@@ -329,6 +341,7 @@ class DBMOPP:
         print("clist", self.obj.centre_list)
         return r
 
+    # DBMOPP
     def place_attractors(self):
         """
             Randomly place attractor regions in 2D space
@@ -341,7 +354,6 @@ class DBMOPP:
         self.obj.attractor_regions = np.array([None] * (l + self.ndr))
 
         for i in np.arange(0, l):
-            self.obj.attractor_regions[i] = attractorRegion()
             B = np.hstack((
                 np.cos(self.obj.pareto_angles + self.obj.rotations[i]),
                 np.sin(self.obj.pareto_angles + self.obj.rotations[i])
@@ -352,12 +364,14 @@ class DBMOPP:
                 (matlib.repmat(self.obj.centre_radii[i], self.k, 2) * B)
             )
 
-            self.obj.attractor_regions[i].locations = locs
-            self.obj.attractor_regions[i].objective_indices = np.arange(self.k) 
-            self.obj.attractor_regions[i].centre = self.obj.centre_list[i,:] # matlab comments these two as duplicate storage.. 
-            self.obj.attractor_regions[i].radius = self.obj.centre_radii[i]  # we prob should get rid of these later
-            # need to feed the points in right shape 
-            self.obj.attractor_regions[i].convhull = convhull(locs)
+            # create attractor region
+            self.obj.attractor_regions[i] = attractorRegion(
+                locations = locs, 
+                indices = np.arange(self.k),
+                centre = self.obj.centre_list[i,:],
+                radius = self.obj.centre_radii[i],
+                convhull = convhull(locs)
+            )
 
             for k in np.arange(self.k):
                 ini_locs[i,:,k] = locs[k,:]
@@ -368,7 +382,6 @@ class DBMOPP:
             self.obj.attractors[i] = ini_locs[:,:,i]
 
         for i in range(l+1, l + self.ndr):
-            self.obj.attractor_regions[i] = attractorRegion()
             locs = (
                 matlib.repmat(self.obj.centre_list[i,:], self.k,1) 
                 + (matlib.repmat(self.obj.centre_radii[i], self.k, 2)
@@ -381,13 +394,19 @@ class DBMOPP:
             n_include = np.random.permutation(self.k - 1) + 1 # Plus one as we want to include at least one
             n_include = n_include[0] # Take the first one
             I = np.argsort(np.random.rand(self.k))
-            self.obj.attractor_regions[i].locations = locs[I[:n_include], :]
-            self.obj.attractor_regions[i].objective_indices = I[:n_include]
-            self.obj.attractor_regions[i].radius = self.obj.centre_radii[i]
-            self.obj.attractor_regions[i].convhull = convhull(locs)
+
+            self.obj.attractor_regions[i] = attractorRegion(
+                locations = locs[I[:n_include], :], 
+                indices = I[:n_include],
+                centre = None, # HMMM
+                radius = self.obj.centre_radii[i],
+                convhull = convhull(locs)
+            )
+   
             for k in range(n_include):
                 self.obj.attractors[i] = np.vstack((self.obj.attractors[i], locs[I[k], :]))
 
+    # DBMOPP
     def initialize(self):
         #place attractor centres for regions defining attractor points
         self.set_up_attractor_centres()
@@ -407,6 +426,7 @@ class DBMOPP:
         self.place_moat_constraint_locations()
         self.assign_design_dimension_projection()
 
+    # DBMOPP
     def place_disconnected_pareto_elements(self):
         n = self.ngp - 1
         pivot_index = np.random.randint(self.k)
@@ -481,13 +501,14 @@ class DBMOPP:
                     self.obj.bracketing_locations_upper[i,:] = calc_location(i, r_angles[index+2])
             index += 1
                     
-
+    # DBMOPP
     def place_vertex_constraint_locations(self):
         """
         Place constraints located at attractor points
         """
         pass
 
+    # DBMOPP
     def place_centre_constraint_locations(self):
         """
         Place center constraint regions
@@ -500,6 +521,7 @@ class DBMOPP:
             self.obj.soft_constraint_centres = self.obj.centre_list
             self.obj.soft_constraint_radii = self.obj.centre_radii
 
+    # DBMOPP
     def place_moat_constraint_locations(self):
         """
         Place moat constraint regions
@@ -513,16 +535,20 @@ class DBMOPP:
             self.obj.soft_constraint_centres = self.obj.centre_list
             self.obj.soft_constraint_radii = self.obj.centre_radii * r
 
+    # DBMOPP
     def place_discontinunities_neutral_and_checker_constraints(self):
         pass
 
+    # DBMOPP
     def setNotAttractorRegionsAsProportionOfSpace(self, S, proportion_to_attain, other_center, other_radii):
         pass
 
+    # DBMOPP
     def get_hard_constraint_violation(self, x):
         in_hard_constraint_region, _ = in_region_excluding_boundary(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, x)
         return in_hard_constraint_region
 
+    # DBMOPP
     def get_soft_constraint_violation(self, x):
         in_soft_constraint_region, d = in_region(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, x)
         if in_soft_constraint_region:
@@ -552,6 +578,7 @@ class DBMOPP:
             self.obj.pi1[mask] = True
             self.obj.pi2 = np.logical_not(self.obj.pi1)
 
+    # Attractors class
     def get_minimun_distance_to_attractors(self, x: np.ndarray):
         """
         
@@ -565,6 +592,7 @@ class DBMOPP:
         y += self.obj.rescaleConstant
         return y
     
+    # DBMOPP
     def get_objectives(self, x):
         print("Get objectives")
         if (self.pareto_set_type == 0):
@@ -576,6 +604,7 @@ class DBMOPP:
         y = self.update_with_neutrality(x,y)
         return y
 
+    # Attractors class
     def get_minimum_distances_to_attractors_overlap_or_discontinuous_form(self, x):
         print("get_minimum_distances_to_attractors_overlap_or_discontinuous_form")
         y = self.get_minimun_distance_to_attractors(x)
@@ -585,6 +614,7 @@ class DBMOPP:
                 y += self.obj.centre_radii[index]
         return y
 
+    # DBMOPP
     def is_in_limited_region(self, x, eps = 1e-06):
         """
         
@@ -627,6 +657,8 @@ class DBMOPP:
                         ans["in_pareto_region"] = not ans["in_pareto_region"]
         return ans
 
+
+    # Combine
     def update_with_discontinuity(self, x, y):
         if self.obj.discontinuous_region_centres is None: return y # or len = 0 ?
         dist = euclidean_distance(self.obj.discontinuous_region_centres, x)
@@ -786,7 +818,7 @@ class DBMOPP:
 if __name__=="__main__":
     n_objectives = 3 # qhull error < 3 ? 
     n_variables = 5
-    n_local_pareto_regions = 0 # actually works but not sure if correct
+    n_local_pareto_regions = 5 # actually works but not sure if correct
     n_disconnected_regions = 0 # atm wont work is > 0
     n_global_pareto_regions = 6
     pareto_set_type = 0
@@ -812,5 +844,5 @@ if __name__=="__main__":
     print(moproblem.evaluate(x)) 
 
     problem.plot_problem_instance()
-    # problem.plot_pareto_set_members(125)
+    problem.plot_pareto_set_members(125)
     problem.plot_landscape_for_single_objective(0, 100)
