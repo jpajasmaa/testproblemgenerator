@@ -12,9 +12,52 @@ from matplotlib import cm
 # TODO: figure out the structure
 
 class Region:
-    def __init__(self, centre, radius):
-        self.centre = centre
-        self.radius = radius
+    def __init__(self, centre: np.ndarray = None, radius: float = None):
+        self._centre = centre
+        self._radius = radius
+    
+    @property
+    def centre(self):
+        return self._centre
+
+    @centre.setter
+    def centre(self, value):
+        self._centre = value
+
+    @property
+    def radius(self):
+        return self._radius
+    
+    @radius.setter
+    def radius(self, value):
+        self._radius = value
+    
+    def is_close(self, x:np.ndarray, eps = 1e-06):
+        return self.radius + eps > self.get_distance(x)
+    
+    def is_inside(self, x:np.ndarray):
+        return self.get_distance(x) < self.radius
+    
+    def get_distance(self, x: np.ndarray):
+        return euclidean_distance(self.centre, x)
+    
+    def calc_location(self, a, rotation): # this is also used in place attractors. so maybe move this so it's also accesible from there
+        radiis = matlib.repmat(self.radius, 1, 2)
+        return (
+            self.centre + radiis
+            * np.hstack((
+                np.cos(a + rotation),
+                np.sin(a + rotation)
+            ))
+        )
+    
+    def plot(self, color, ax):
+        if self.radius is None: return
+        x = self.centre[0]
+        y = self.centre[1]
+        circle = Circle((x,y), self.radius, fc = color, fill = True, alpha = 0.5)
+        ax.add_patch(circle)
+    
 
 class attractorRegion(Region):
     def __init__(self, locations, indices, centre, radius, convhull):
@@ -32,8 +75,14 @@ class attractorRegion(Region):
         if self.convhull is None: return
         p = self.locations
         
-        for s in self.convhull.simplices:
-            ax.plot(p[s,0], p[s,1], color = 'black')
+        for i in range(len(self.convhull.simplices)):
+            s = self.convhull.simplices[i]
+            ax.plot(p[s,0], p[s,1], color = 'black') # outline
+
+            # add points
+            ax.scatter(p[i,0], p[i,1], color = 'blue')
+            ax.annotate(i, (p[i,0], p[i,1]))
+
         ax.fill(p[self.convhull.vertices,0], p[self.convhull.vertices, 1], color=color, alpha = 0.7)
 
 class DBMOPPobject:
@@ -53,18 +102,23 @@ class DBMOPPobject:
 
         # region class
         # self.region = None
-        self.centre_list = None
-        self.centre_radii = None
+        self.centre_regions = None
+        # self.centre_list = None
+        # self.centre_radii = None
 
+        self.neutral_regions = None
         self.neutral_region_centres = None
         self.neutral_region_radii = None
 
+        self.hard_regions = None
         self.hard_constraint_centres = None
         self.hard_constraint_radii = None
 
+        self.soft_regions = None
         self.soft_constraint_centres = None
         self.soft_constraint_radii = None
 
+        self.discontinuous_regions = None
         self.discontinuous_region_centres = None
         self.discontinuous_region_objective_value_offset = None
         self.discontinuous_region_radii = None
@@ -265,10 +319,18 @@ class DBMOPP:
         self.check_valid_length(y)
         x = get_2D_version(y, self.obj.pi1, self.obj.pi2)
 
-        dist = euclidean_distance(self.obj.centre_list, x)
-        if np.any(dist < self.obj.centre_radii):
-            return in_hull(x, self.obj.attractor_regions) # TODO indeksijumppa
+
+
+        for centre_region in self.obj.centre_regions:
+            if centre_region.is_inside(x):
+                return in_hull()  # TODO
+
+        # dist = euclidean_distance(self.obj.centre_list, x) # inside any centre region func?
+        # if np.any(dist < self.obj.centre_radii):
+        #     return in_hull(x, self.obj.attractor_regions) # TODO indeksijumppa
+
         return False
+    
 
     # DBMOPP
     def check_valid_length(self, x):
@@ -285,27 +347,44 @@ class DBMOPP:
         # number of local PO sets, global PO sets, dominance resistance regions
         n = self.nlp + self.ngp + self.ndr 
 
-        max_radius = 1/(2*np.sqrt(n)+1) * (1 - (self.prop_neutral + self.prop_contraint_checker)) # prop 0 and 0.
-        radius = self.place_regions(n, max_radius)
+        #Create the attractor objects
+        self.obj.centre_regions = np.array([Region() for _ in range(n)]) # Different objects
 
-        self.obj.centre_radii = np.ones((n,1)) * radius # We need this because nlp might be <= 0
+        max_radius = 1/(2*np.sqrt(n)+1) * (1 - (self.prop_neutral + self.prop_contraint_checker)) # prop 0 and 0.
+        
+        # Assign centres
+        radius = self.place_region_centres(n, max_radius)
+
+        # Assign radius
+        self.place_region_radius(n, radius)
+        
+        # save indices of PO set locations
+        self.obj.pareto_set_indices = np.arange(self.ngp+1, self.nlp + self.ngp + 1)
+    
+    def place_region_radius(self, n, r):
+        for i in range(n):
+            self.obj.centre_regions[i].radius = r
+
+        self.obj.centre_radii = np.ones(n) * r # We need this because nlp might be <= 0
 
         if self.nlp > 0:
             # TODO: when locals taken into account. Does not work yet
-            self.obj.centre_radii[self.nlp + 1: -1] = radius / 2
-            w = np.atleast_2d(np.linspace(1, 0.5, self.nlp))
+            self.obj.centre_radii[self.nlp+1:] = r / 2
+            for i in range(self.nlp + 1, n):
+                self.obj.centre_regions[i].radius = r / 2
+
+            w = np.linspace(1, 0.5, self.nlp+1)
+
             print("w", w)
-            print("w", w[0:self.nlp].T)
-            print(self.obj.centre_radii[0:self.nlp])
-            print(self.obj.centre_radii)
+            # print("centre radii", self.obj.centre_radii)
+
             # linearly decrease local front radii
-            self.obj.centre_radii[0:self.nlp] = self.obj.centre_radii[0:self.nlp] * w[0:self.nlp].T
-        
-        # save indices of PO set locations
-        self.obj.pareto_set_indices = self.nlp + self.ngp
+            self.obj.centre_radii[:self.nlp+1] = self.obj.centre_radii[:self.nlp+1] * w[:self.nlp+1]
+            for i in range(self.nlp+1):
+                self.obj.centre_regions[i].radius = self.obj.centre_regions[i].radius * w[i]
 
     # DBMOPP
-    def place_regions(self, n: int, r: float):
+    def place_region_centres(self, n: int, r: float):
         """
 
         Args:
@@ -313,32 +392,41 @@ class DBMOPP:
         """
         effective_bound = 1 - r
         threshold = 4*r
-        self.obj.centre_list = np.zeros((n,2))
+        
+        # self.obj.centre_list = np.zeros((n,2))
 
         time_start = time()
         too_long = False
         max_elapsed = 1 # Max seconds after reattempt. THIS IS VERY DUMP!
-        rand_coord = (np.random.rand(1, 2)*2*effective_bound) - effective_bound
-        self.obj.centre_list[0,:] = rand_coord  #random cordinate pair between -(1-radius) and +(1-radius)
+        rand_coord = (np.random.rand(2)*2*effective_bound) - effective_bound
+        # self.obj.centre_list[0,:] = rand_coord  #random cordinate pair between -(1-radius) and +(1-radius)
+        self.obj.centre_regions[0].centre = rand_coord
+        
         print('tres', threshold)
         print('Radius: ', r)
 
-        for i in np.arange(1, n):
+        for i in np.arange(1, n): # looping the objects would be nicer
             while True:
-                rand_coord = (np.random.rand(1, 2)*2*effective_bound) - effective_bound
-                t = np.min(euclidean_distance(self.obj.centre_list[0:i,:], rand_coord)) # useless min call? 
+                # changed rand(1,2) to rand(2) same above
+                rand_coord = (np.random.rand(2)*2*effective_bound) - effective_bound
+                # t = np.min(euclidean_distance(self.obj.centre_list[0:i,:], rand_coord)) # useless min call? 
+                distances = np.array([self.obj.centre_regions[i].get_distance(rand_coord) for i in range(i)])
+                t = np.min(distances)
                 #print('t', t)
                 if t > threshold:
                     print("assigned centre", i)
                     break
                 too_long = (time() - time_start) > max_elapsed
                 if (too_long): break
-            self.obj.centre_list[i,:] = rand_coord
+            # self.obj.centre_list[i,:] = rand_coord
+            self.obj.centre_regions[i].centre = rand_coord
 
         if (too_long): # Took longer than max_elapsed... Still very dump
             print('restarting attractor region placement with smaller radius...\n')
-            return self.place_regions(n, r*0.75)
-        print("clist", self.obj.centre_list)
+            return self.place_region_centres(n, r*0.75)
+
+        # print("clist", self.obj.centre_list)
+
         return r
 
     # DBMOPP
@@ -360,16 +448,16 @@ class DBMOPP:
             ))
 
             locs = (
-                matlib.repmat(self.obj.centre_list[i,:], self.k, 1) + 
-                (matlib.repmat(self.obj.centre_radii[i], self.k, 2) * B)
+                matlib.repmat(self.obj.centre_regions[i].centre, self.k, 1) + 
+                (matlib.repmat(self.obj.centre_regions[i].radius, self.k, 2) * B)
             )
 
             # create attractor region
             self.obj.attractor_regions[i] = attractorRegion(
                 locations = locs, 
                 indices = np.arange(self.k),
-                centre = self.obj.centre_list[i,:],
-                radius = self.obj.centre_radii[i],
+                centre = self.obj.centre_regions[i].centre,
+                radius = self.obj.centre_regions[i].radius,
                 convhull = convhull(locs)
             )
 
@@ -383,8 +471,8 @@ class DBMOPP:
 
         for i in range(l+1, l + self.ndr):
             locs = (
-                matlib.repmat(self.obj.centre_list[i,:], self.k,1) 
-                + (matlib.repmat(self.obj.centre_radii[i], self.k, 2)
+                matlib.repmat(self.obj.centre_regions[i].centre, self.k,1) 
+                + (matlib.repmat(self.obj.centre_regions[i].radius, self.k, 2)
                     * np.hstack((
                         np.cos(self.obj.pareto_angles + self.obj.rotations[i]),
                         np.sin(self.obj.pareto_angles + self.obj.rotations[i])
@@ -399,7 +487,7 @@ class DBMOPP:
                 locations = locs[I[:n_include], :], 
                 indices = I[:n_include],
                 centre = None, # HMMM
-                radius = self.obj.centre_radii[i],
+                radius = self.obj.centre_regions[i].radius,
                 convhull = convhull(locs)
             )
    
@@ -412,8 +500,7 @@ class DBMOPP:
         self.set_up_attractor_centres()
         #set up angles for attractors on regin cicumferences and arbitrary rotations for regions
         self.obj.pareto_angles = get_random_angles(self.k) # arbitrary angles for Pareto set
-        print(self.obj.centre_radii)
-        self.obj.rotations = get_random_angles(self.obj.centre_radii.shape[0])
+        self.obj.rotations = get_random_angles(len(self.obj.centre_regions))
         # now place attractors
         self.place_attractors()
         if self.pareto_set_type != 0:
@@ -471,15 +558,16 @@ class DBMOPP:
         self.obj.bracketing_locations_lower = np.zeros((k,2))
         self.obj.bracketing_locations_upper = np.zeros((k,2))
 
-        def calc_location(ind, a): # this is also used in place attractors. so maybe move this so it's also accesible from there
-            radiis = matlib.repmat(self.obj.centre_radii[i], 1, 2)
-            return (
-                self.obj.centre_list[ind,:] + radiis
-                * np.hstack((
-                    np.cos(a + self.obj.rotations[i]),
-                    np.sin(a + self.obj.rotations[i])
-                ))
-            )
+        def calc_location(ind, a):
+            return self.obj.centre_regions[i].calc_location(a, self.obj.rotations[ind])
+            # radiis = matlib.repmat(self.obj.centre_radii[ind], 1, 2)
+            # return (
+            #     self.obj.centre_list[ind,:] + radiis
+            #     * np.hstack((
+            #         np.cos(a + self.obj.rotations[ind]),
+            #         np.sin(a + self.obj.rotations[ind])
+            #     ))
+            # )
 
         index = 0
         for i in range(self.nlp, self.nlp + self.ngp): # verify indexing
@@ -515,11 +603,13 @@ class DBMOPP:
         """
         print("Assigning any centre soft/hard constraint regions.\n")
         if self.constraint_type == 2:
-            self.obj.hard_constraint_centres = self.obj.centre_list
-            self.obj.hard_constraint_radii = self.obj.centre_radii
+            # self.obj.hard_constraint_centres = self.obj.centre_list
+            # self.obj.hard_constraint_radii = self.obj.centre_radii
+            self.obj.hard_regions = self.obj.centre_regions
         elif self.constraint_type == 5:
-            self.obj.soft_constraint_centres = self.obj.centre_list
-            self.obj.soft_constraint_radii = self.obj.centre_radii
+            self.obj.soft_regions = self.obj.centre_regions
+            # self.obj.soft_constraint_centres = self.obj.centre_list
+            # self.obj.soft_constraint_radii = self.obj.centre_radii
 
     # DBMOPP
     def place_moat_constraint_locations(self):
@@ -529,11 +619,17 @@ class DBMOPP:
         print('Assigning any moat soft/hard constraint regions\n')
         r = np.random.rand() + 1
         if self.constraint_type == 3:
-            self.obj.hard_constraint_centres = self.obj.centre_list
-            self.obj.hard_constraint_radii = self.obj.centre_radii * r
+            self.obj.hard_regions = self.obj.centre_regions
+            for i in range(len(self.obj.hard_regions)):
+                self.obj.hard_regions[i].radius = self.obj.hard_regions[i].radius * r
+            # self.obj.hard_constraint_centres = self.obj.centre_list
+            # self.obj.hard_constraint_radii = self.obj.centre_radii * r
         elif self.constraint_type == 6:
-            self.obj.soft_constraint_centres = self.obj.centre_list
-            self.obj.soft_constraint_radii = self.obj.centre_radii * r
+            self.obj.soft_regions = self.obj.centre_regions
+            for i in range(len(self.obj.soft_regions)):
+                self.obj.soft_regions[i].radius = self.obj.soft_regions[i].radius * r
+            # self.obj.soft_constraint_centres = self.obj.centre_list
+            # self.obj.soft_constraint_radii = self.obj.centre_radii * r
 
     # DBMOPP
     def place_discontinunities_neutral_and_checker_constraints(self):
@@ -625,18 +721,23 @@ class DBMOPP:
             "in_hull": False,
             "index": -1
         }
-        dist = euclidean_distance(self.obj.centre_list, x)
-        I = np.where(dist <= np.concatenate(self.obj.centre_radii + eps))
-        I = np.concatenate(I)
+        # dist = euclidean_distance(self.obj.centre_list, x)
+        # I = np.where(dist <= self.obj.centre_radii + eps)
+        # I = np.concatenate(I)
+
+        # can still be improved?
+        I = np.array([i for i in range(len(self.obj.centre_regions)) if self.obj.centre_regions[i].is_close(x, eps)])
         
         if len(I) > 0: # is not empty 
             i = I[0]
-            if self.nlp < i <= self.nlp + self.ngp:
+            if self.nlp <= i < self.nlp + self.ngp:
                 if self.constraint_type in [2,6]: 
                     # Smaller of dist
-                    r = np.min(np.abs(dist[i]), np.abs(self.obj.centre_radii[i]))
+                    dist = self.obj.centre_regions[i].get_distance(x)
+                    radius = self.obj.centre_regions[i].radius
+                    r = np.min(np.abs(dist), np.abs(radius))
                     # THIS if + elif could be a oneliner ans["inhull"] = np.abs .. or in_hull
-                    if np.abs(dist[i]) - self.obj.centre_radii[i] < 1e4 * eps * r:
+                    if np.abs(dist) - radius < 1e4 * eps * r:
                         ans["in_hull"] = True
                 elif in_hull(x, self.obj.attractor_regions[i].locations[self.obj.attractor_regions[i].convhull.simplices]):
                     ans["in_hull"] = True 
@@ -655,7 +756,7 @@ class DBMOPP:
                 )
                 print("dis ans", ans)
                 if self.pareto_set_type == 1:
-                    if I[0] == self.nlp + self.ngp:
+                    if I[0] == self.nlp + self.ngp: # should maybe be -1
                         ans["in_pareto_region"] = not ans["in_pareto_region"] # special case where last region is split at the two sides, should not get here everytime
 
         return ans
@@ -704,7 +805,7 @@ class DBMOPP:
             # attractor regions should take care of different cases
             self.obj.attractor_regions[i].plot(ax, 'b') 
         
-        # Plot contraint region rectangles
+        # Plot contraint region circles
         def plot_constraint_regions(centres, radii, color):
             if radii is None: return
             for i in range(len(radii)):
@@ -713,10 +814,19 @@ class DBMOPP:
                 r = radii[i]
                 rectangle = Circle((x,y), r, fc = color, fill = True, alpha = 0.5)
                 ax.add_patch(rectangle)
+        
+        def plot_constraint_regions_v2(constraint_regions, color):
+            for constraint_region in constraint_regions:
+                constraint_region.plot(color, ax)
             
         plot_constraint_regions(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, 'black')
         plot_constraint_regions(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, 'orange')
         plot_constraint_regions(self.obj.neutral_region_centres, self.obj.neutral_region_radii, 'grey')
+
+        # plot_constraint_regions_v2(self.obj.hard_regions, 'black')
+        # plot_constraint_regions_v2(self.obj.soft_regions, 'orange')
+        # plot_constraint_regions_v2(self.obj.neutral_regions, 'grey')
+
 
         # PLOT DISCONNECTED PENALTY
         print("disconnected Pareto penalty regions not yet plotted. THIS IS NOT IMPLEMENTED IN MATLAB")
@@ -724,11 +834,11 @@ class DBMOPP:
         # plot attractor points
         # This could propably be done better in just the attractor region place...
         # ugh double loop
-        for i in range(self.k):
-            for j in range(self.ngp + self.nlp):
-                locs = self.obj.attractors[i]
-                ax.scatter(locs[j,0], locs[j,1], color = 'b')
-                ax.annotate(i, (locs[j,0], locs[j,1]))
+        # for i in range(self.k):
+        #     for j in range(self.ngp + self.nlp):
+        #         locs = self.obj.attractors[i]
+        #         ax.scatter(locs[j,0], locs[j,1], color = 'blue')
+        #         ax.annotate(i, (locs[j,0], locs[j,1]))
 
         #plt.show()
     
@@ -819,11 +929,11 @@ class DBMOPP:
     
 
 if __name__=="__main__":
-    n_objectives = 3 # qhull error < 3 ? 
-    n_variables = 2
-    n_local_pareto_regions = 2 # actually works but not sure if correct
+    n_objectives = 5 # qhull error < 3 ? 
+    n_variables = 3
+    n_local_pareto_regions = 1 # actually works but not sure if correct
     n_disconnected_regions = 0 # atm wont work is > 0
-    n_global_pareto_regions = 2 # seems like nlp <= gpr
+    n_global_pareto_regions = 5 # seems like nlp <= gpr
     pareto_set_type = 0 
     constraint_type = 0 
     problem = DBMOPP(
@@ -847,7 +957,7 @@ if __name__=="__main__":
     print(moproblem.evaluate(x)) 
 
     problem.plot_problem_instance()
-    problem.plot_pareto_set_members(300)
+    problem.plot_pareto_set_members(100)
     #problem.plot_landscape_for_single_objective(0, 100)
 
     # show all plots
