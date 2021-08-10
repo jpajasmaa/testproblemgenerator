@@ -38,7 +38,6 @@ def convhull(points):
         np.ndarray: The indices of the simplices that form the convex hull
     """
     # TODO validate that enough unique points and so on
-    print(points)
     hull = ConvexHull(points)
     return hull
 

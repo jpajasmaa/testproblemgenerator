@@ -93,7 +93,6 @@ class DBMOPPobject:
         self.attractor_regions = [] # array of attractorRegions 
         self.pi1 = None
         self.pi2 = None
-        self.neutral_region_objective_values = np.sqrt(8)
        
         self.pareto_set_indices = 0
 
@@ -107,21 +106,22 @@ class DBMOPPobject:
         # self.centre_radii = None
 
         self.neutral_regions = None
-        self.neutral_region_centres = None
-        self.neutral_region_radii = None
+        self.neutral_region_objective_values = np.sqrt(8)
+        # self.neutral_region_centres = None
+        # self.neutral_region_radii = None
 
         self.hard_constraint_regions = None
-        self.hard_constraint_centres = None
-        self.hard_constraint_radii = None
+        # self.hard_constraint_centres = None
+        # self.hard_constraint_radii = None
 
         self.soft_constraint_regions = None
-        self.soft_constraint_centres = None
-        self.soft_constraint_radii = None
+        # self.soft_constraint_centres = None
+        # self.soft_constraint_radii = None
 
         self.discontinuous_regions = None
-        self.discontinuous_region_centres = None
         self.discontinuous_region_objective_value_offset = None
-        self.discontinuous_region_radii = None
+        # self.discontinuous_region_centres = None
+        # self.discontinuous_region_radii = None
 
         self.pivot_locations = None
         self.bracketing_locations_lower = None
@@ -293,7 +293,6 @@ class DBMOPP:
         # Neither constraint breached
         print("neither")
         
-        # if in_region(self.obj.neutral_region_centres, self.obj.neutral_region_radii, x)[0]:
         if self.check_neutral_regions(x):
             ans["obj_vector"] = self.obj.neutral_region_objective_values
         else: 
@@ -326,10 +325,6 @@ class DBMOPP:
         for centre_region in self.obj.centre_regions:
             if centre_region.is_inside(x):
                 return in_hull()  # TODO
-
-        # dist = euclidean_distance(self.obj.centre_list, x) # inside any centre region func?
-        # if np.any(dist < self.obj.centre_radii):
-        #     return in_hull(x, self.obj.attractor_regions) # TODO indeksijumppa
 
         return False
     
@@ -367,7 +362,6 @@ class DBMOPP:
         for i in range(n):
             self.obj.centre_regions[i].radius = r
 
-        # self.obj.centre_radii = np.ones(n) * r # We need this because nlp might be <= 0
 
         if self.nlp > 0:
             # TODO: when locals taken into account. Does not work yet
@@ -378,10 +372,7 @@ class DBMOPP:
             w = np.linspace(1, 0.5, self.nlp+1)
 
             print("w", w)
-            # print("centre radii", self.obj.centre_radii)
 
-            # linearly decrease local front radii
-            # self.obj.centre_radii[:self.nlp+1] = self.obj.centre_radii[:self.nlp+1] * w[:self.nlp+1]
             for i in range(self.nlp+1):
                 self.obj.centre_regions[i].radius = self.obj.centre_regions[i].radius * w[i]
 
@@ -394,14 +385,11 @@ class DBMOPP:
         """
         effective_bound = 1 - r
         threshold = 4*r
-        
-        # self.obj.centre_list = np.zeros((n,2))
 
         time_start = time()
         too_long = False
         max_elapsed = 1 # Max seconds after reattempt. THIS IS VERY DUMP!
         rand_coord = (np.random.rand(2)*2*effective_bound) - effective_bound
-        # self.obj.centre_list[0,:] = rand_coord  #random cordinate pair between -(1-radius) and +(1-radius)
         self.obj.centre_regions[0].centre = rand_coord
         
         print('tres', threshold)
@@ -409,12 +397,9 @@ class DBMOPP:
 
         for i in np.arange(1, n): # looping the objects would be nicer
             while True:
-                # changed rand(1,2) to rand(2) same above
                 rand_coord = (np.random.rand(2)*2*effective_bound) - effective_bound
-                # t = np.min(euclidean_distance(self.obj.centre_list[0:i,:], rand_coord)) # useless min call? 
                 distances = np.array([self.obj.centre_regions[i].get_distance(rand_coord) for i in range(i)])
                 t = np.min(distances)
-                #print('t', t)
                 if t > threshold:
                     print("assigned centre", i)
                     break
@@ -427,7 +412,6 @@ class DBMOPP:
             print('restarting attractor region placement with smaller radius...\n')
             return self.place_region_centres(n, r*0.75)
 
-        # print("clist", self.obj.centre_list)
 
         return r
 
@@ -437,7 +421,6 @@ class DBMOPP:
             Randomly place attractor regions in 2D space
         """
         print("place_attractors")
-        # print("radii", self.obj.centre_radii)
         l = self.nlp + self.ngp
         ini_locs = np.zeros((l, 2, self.k))
 
@@ -483,6 +466,8 @@ class DBMOPP:
             )
             n_include = np.random.permutation(self.k - 1) + 1 # Plus one as we want to include at least one
             n_include = n_include[0] # Take the first one
+            print(n_include)
+            input()
             I = np.argsort(np.random.rand(self.k))
 
             self.obj.attractor_regions[i] = attractorRegion(
@@ -494,7 +479,7 @@ class DBMOPP:
             )
    
             for k in range(n_include):
-                self.obj.attractors[i] = np.vstack((self.obj.attractors[i], locs[I[k], :]))
+                self.obj.attractors[k] = np.vstack((self.obj.attractors[k], locs[I[k], :]))
 
     # DBMOPP
     def initialize(self):
@@ -561,15 +546,7 @@ class DBMOPP:
         self.obj.bracketing_locations_upper = np.zeros((k,2))
 
         def calc_location(ind, a):
-            return self.obj.centre_regions[i].calc_location(a, self.obj.rotations[ind])
-            # radiis = matlib.repmat(self.obj.centre_radii[ind], 1, 2)
-            # return (
-            #     self.obj.centre_list[ind,:] + radiis
-            #     * np.hstack((
-            #         np.cos(a + self.obj.rotations[ind]),
-            #         np.sin(a + self.obj.rotations[ind])
-            #     ))
-            # )
+            return self.obj.centre_regions[ind].calc_location(a, self.obj.rotations[ind])
 
         index = 0
         for i in range(self.nlp, self.nlp + self.ngp): # verify indexing
@@ -605,13 +582,9 @@ class DBMOPP:
         """
         print("Assigning any centre soft/hard constraint regions.\n")
         if self.constraint_type == 2:
-            # self.obj.hard_constraint_centres = self.obj.centre_list
-            # self.obj.hard_constraint_radii = self.obj.centre_radii
             self.obj.hard_constraint_regions = self.obj.centre_regions
         elif self.constraint_type == 5:
             self.obj.soft_constraint_regions = self.obj.centre_regions
-            # self.obj.soft_constraint_centres = self.obj.centre_list
-            # self.obj.soft_constraint_radii = self.obj.centre_radii
 
     # DBMOPP
     def place_moat_constraint_locations(self):
@@ -624,14 +597,10 @@ class DBMOPP:
             self.obj.hard_regions = self.obj.centre_regions
             for i in range(len(self.obj.hard_regions)):
                 self.obj.hard_regions[i].radius = self.obj.hard_regions[i].radius * r
-            # self.obj.hard_constraint_centres = self.obj.centre_list
-            # self.obj.hard_constraint_radii = self.obj.centre_radii * r
         elif self.constraint_type == 6:
             self.obj.soft_regions = self.obj.centre_regions
             for i in range(len(self.obj.soft_regions)):
                 self.obj.soft_regions[i].radius = self.obj.soft_regions[i].radius * r
-            # self.obj.soft_constraint_centres = self.obj.centre_list
-            # self.obj.soft_constraint_radii = self.obj.centre_radii * r
 
     # DBMOPP
     def place_discontinunities_neutral_and_checker_constraints(self):
@@ -651,33 +620,15 @@ class DBMOPP:
 
     def check_neutral_regions(self, x):
         return self.check_region(self.obj.neutral_regions, x, True)
-        # if self.obj.neutral_regions is None: return False
-        # for neutral_region in self.obj.neutral_regions:
-        #     if neutral_region.is_inside(x, include_boundary = True):
-        #         return True
-        # return False
+
 
     # DBMOPP
     def get_hard_constraint_violation(self, x):
         return self.check_region(self.obj.hard_constraint_regions, x, False)
-        # if self.obj.hard_constraint_regions is None: return False
-        # for hard_constraint_region in self.obj.hard_constraint_regions:
-        #     if hard_constraint_region.is_inside(x, include_boundary = False):
-        #         return True
-        # return False
-
-        # in_hard_constraint_region, _ = in_region_excluding_boundary(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, x)
-        # return in_hard_constraint_region
 
     # DBMOPP
     def get_soft_constraint_violation(self, x):
         return self.check_region(self.obj.soft_constraint_regions, x, True)
-        # if self.obj.soft_constraint_regions is None: return False
-        # for soft_constraint_region in self.obj.soft_constraint_regions:
-        #     if soft_constraint_region.is_inside(x, include_boundary = True):
-        #         return True
-        # return False # what happens below?
-
         # in_soft_constraint_region, d = in_region(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, x)
         # if in_soft_constraint_region:
         #     k = np.sum(d < self.obj.soft_constraint_radii)
@@ -706,17 +657,49 @@ class DBMOPP:
             self.obj.pi1[mask] = True
             self.obj.pi2 = np.logical_not(self.obj.pi1)
 
-    # Attractors class
+    # Attractors class, WHAT WE WANT
+    def get_minimun_distance_to_attractors2(self, x: np.ndarray):
+        """
+        
+        """
+        y = np.zeros(self.k)
+        for  i, attractor_region in enumerate(self.obj.attractor_regions): # HMM
+
+            d = attractor_region.get_distance(x) 
+            y[i] = np.min(d)
+            if i == self.k - 1: break
+        y *= self.obj.rescaleMultiplier
+        y += self.obj.rescaleConstant
+        return y
+    
+    #
     def get_minimun_distance_to_attractors(self, x: np.ndarray):
         """
         
         """
         y = np.zeros(self.k)
-        for i in range(self.k): # HMM
-            d = euclidean_distance(self.obj.attractors[i], x)
-            y[i] = np.min(d)
+        print("attractor",self.obj.attractors)
+        for reg in self.obj.attractor_regions:
+            print("reg", reg.locations)
+
+        for i, attractor in enumerate(self.obj.attractors): # HMM
+            d = self.obj.attractor_regions[i].get_distance(x)
+
+            d1 = euclidean_distance(attractor, x)
+            y[i] = np.min(d1)
         y *= self.obj.rescaleMultiplier
         y += self.obj.rescaleConstant
+        return y
+    
+    # Attractors class
+    def get_minimum_distances_to_attractors_overlap_or_discontinuous_form(self, x):
+        print("get_minimum_distances_to_attractors_overlap_or_discontinuous_form")
+        y = self.get_minimun_distance_to_attractors(x)
+        in_pareto_region, in_hull, index  = self.is_in_limited_region(x).values()
+        if in_hull:
+            if not in_pareto_region:
+                y += self.obj.centre_regions[index].radius
+                # y += self.obj.centre_radii[index]
         return y
     
     # DBMOPP
@@ -731,17 +714,6 @@ class DBMOPP:
         y = self.update_with_neutrality(x,y)
         return y
 
-    # Attractors class
-    def get_minimum_distances_to_attractors_overlap_or_discontinuous_form(self, x):
-        print("get_minimum_distances_to_attractors_overlap_or_discontinuous_form")
-        y = self.get_minimun_distance_to_attractors(x)
-        in_pareto_region, in_hull, index  = self.is_in_limited_region(x).values()
-        if in_hull:
-            if not in_pareto_region:
-                y += self.obj.centre_regions[index].radius
-                # y += self.obj.centre_radii[index]
-        return y
-
     # DBMOPP
     def is_in_limited_region(self, x, eps = 1e-06):
         """
@@ -753,9 +725,6 @@ class DBMOPP:
             "in_hull": False,
             "index": -1
         }
-        # dist = euclidean_distance(self.obj.centre_list, x)
-        # I = np.where(dist <= self.obj.centre_radii + eps)
-        # I = np.concatenate(I)
 
         # can still be improved?
         I = np.array([i for i in range(len(self.obj.centre_regions)) if self.obj.centre_regions[i].is_close(x, eps)])
@@ -802,13 +771,6 @@ class DBMOPP:
             x,
             y,    
         )
-        # if self.obj.discontinuous_region_centres is None: return y # or len = 0 ?
-        # dist = euclidean_distance(self.obj.discontinuous_region_centres, x)
-        # dist[dist >= self.obj.discontinuous_region_radii] = 0 
-        # if np.sum(dist) > 0: # Could check more efficiently
-        #     i = np.argmin(dist) # Umm should it be min of a value which is greater than 0
-        #     y = y + self.obj.discontinuous_region_objective_value_offset[i,:]
-        # return y
 
     def update_with_neutrality(self, x, y):
         return self._update(
@@ -817,22 +779,15 @@ class DBMOPP:
             x,
             y,    
         )
-        # if self.obj.neutral_region_centres is None: return y # or len = 0 ?
-        # dist = euclidean_distance(self.obj.neutral_region_centres, x)
-        # dist[dist >= self.obj.neutral_region_radii] = 0 
-        # if np.sum(dist) > 0: # Could check more efficiently
-        #     i = np.argmin(dist) # Umm should it be min of a value which is greater than 0
-        #     y = y + self.obj.neutral_region_objective_values[i,:]
-        # return y
 
     # remove offsets? offset to class ?
     def _update(self, regions, offsets, x, y):
         if regions is None: return y
         distances = np.array(len(regions))
         for region, i in enumerate(regions):
-            distances[i] = 0 if region.is_inside(x, include_boundary = True) else region.get_distance(x)
+            distances[i] = region.get_distance(x) if region.is_inside(x, include_boundary = True) else 0
         if np.any(distances > 0):
-            index = np.argmin(distances)
+            index = np.argmin(distances) # molst likely will return the index of the first 0
             y = y + offsets[index,:]
         return y
 
@@ -859,42 +814,20 @@ class DBMOPP:
         for i in range(self.nlp + self.ngp, self.nlp + self.ngp + self.ndr):
             # attractor regions should take care of different cases
             self.obj.attractor_regions[i].plot(ax, 'b') 
+
         
-        # Plot contraint region circles
-        # def plot_constraint_regions(centres, radii, color):
-        #     if radii is None: return
-        #     for i in range(len(radii)):
-        #         x = centres[i,0]
-        #         y = centres[i,1]
-        #         r = radii[i]
-        #         rectangle = Circle((x,y), r, fc = color, fill = True, alpha = 0.5)
-        #         ax.add_patch(rectangle)
-        
-        def plot_constraint_regions_v2(constraint_regions, color):
+        def plot_constraint_regions(constraint_regions, color):
             if constraint_regions is None: return
             for constraint_region in constraint_regions:
                 constraint_region.plot(color, ax)
-            
-        # plot_constraint_regions(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, 'black')
-        # plot_constraint_regions(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, 'orange')
-        # plot_constraint_regions(self.obj.neutral_region_centres, self.obj.neutral_region_radii, 'grey')
 
-        plot_constraint_regions_v2(self.obj.hard_constraint_regions, 'black')
-        plot_constraint_regions_v2(self.obj.soft_constraint_regions, 'orange')
-        plot_constraint_regions_v2(self.obj.neutral_regions, 'grey')
+        plot_constraint_regions(self.obj.hard_constraint_regions, 'black')
+        plot_constraint_regions(self.obj.soft_constraint_regions, 'orange')
+        plot_constraint_regions(self.obj.neutral_regions, 'grey')
 
 
         # PLOT DISCONNECTED PENALTY
         print("disconnected Pareto penalty regions not yet plotted. THIS IS NOT IMPLEMENTED IN MATLAB")
-
-        # plot attractor points
-        # This could propably be done better in just the attractor region place...
-        # ugh double loop
-        # for i in range(self.k):
-        #     for j in range(self.ngp + self.nlp):
-        #         locs = self.obj.attractors[i]
-        #         ax.scatter(locs[j,0], locs[j,1], color = 'blue')
-        #         ax.annotate(i, (locs[j,0], locs[j,1]))
 
         #plt.show()
     
@@ -988,10 +921,10 @@ if __name__=="__main__":
     n_objectives = 5 # qhull error < 3 ? 
     n_variables = 3
     n_local_pareto_regions = 1 # actually works but not sure if correct
-    n_disconnected_regions = 0 # atm wont work is > 0
+    n_disconnected_regions = 2 # atm wont work is > 0
     n_global_pareto_regions = 5 # seems like nlp <= gpr
     pareto_set_type = 0 
-    constraint_type = 5
+    constraint_type = 0
     problem = DBMOPP(
         n_objectives,
         n_variables,
@@ -1010,11 +943,11 @@ if __name__=="__main__":
     # wont work because x will be converted to 2d array and then some of the indexing fail. 
     # Fix: Either check for 2d or modify the existing code to use the same kind of arrays as desdeo
 
-    print(moproblem.evaluate(x)) 
+    # print(moproblem.evaluate(x)) 
 
     problem.plot_problem_instance()
-    problem.plot_pareto_set_members(100)
-    #problem.plot_landscape_for_single_objective(0, 100)
+    # problem.plot_pareto_set_members(100)
+    problem.plot_landscape_for_single_objective(0, 100)
 
     # show all plots
     plt.show()
