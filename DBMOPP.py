@@ -35,8 +35,10 @@ class Region:
     def is_close(self, x:np.ndarray, eps = 1e-06):
         return self.radius + eps > self.get_distance(x)
     
-    def is_inside(self, x:np.ndarray):
-        return self.get_distance(x) < self.radius
+    def is_inside(self, x:np.ndarray, include_boundary = False):
+        if include_boundary:
+            return self.get_distance(x) <= self.radius
+        return self.get_distance(x) < self.radius 
     
     def get_distance(self, x: np.ndarray):
         return euclidean_distance(self.centre, x)
@@ -52,7 +54,6 @@ class Region:
         )
     
     def plot(self, color, ax):
-        if self.radius is None: return
         x = self.centre[0]
         y = self.centre[1]
         circle = Circle((x,y), self.radius, fc = color, fill = True, alpha = 0.5)
@@ -64,8 +65,6 @@ class attractorRegion(Region):
         self.locations = locations
         self.objective_indices = indices
         super().__init__(centre, radius)
-        # self.centre = centre
-        # self.radius = radius
         self.convhull = convhull
     
     def plot(self, ax, color = 'b'):
@@ -82,7 +81,7 @@ class attractorRegion(Region):
             # add points
             ax.scatter(p[i,0], p[i,1], color = 'blue')
             ax.annotate(i, (p[i,0], p[i,1]))
-
+        
         ax.fill(p[self.convhull.vertices,0], p[self.convhull.vertices, 1], color=color, alpha = 0.7)
 
 class DBMOPPobject:
@@ -110,11 +109,11 @@ class DBMOPPobject:
         self.neutral_region_centres = None
         self.neutral_region_radii = None
 
-        self.hard_regions = None
+        self.hard_constraint_regions = None
         self.hard_constraint_centres = None
         self.hard_constraint_radii = None
 
-        self.soft_regions = None
+        self.soft_constraint_regions = None
         self.soft_constraint_centres = None
         self.soft_constraint_radii = None
 
@@ -365,11 +364,11 @@ class DBMOPP:
         for i in range(n):
             self.obj.centre_regions[i].radius = r
 
-        self.obj.centre_radii = np.ones(n) * r # We need this because nlp might be <= 0
+        # self.obj.centre_radii = np.ones(n) * r # We need this because nlp might be <= 0
 
         if self.nlp > 0:
             # TODO: when locals taken into account. Does not work yet
-            self.obj.centre_radii[self.nlp+1:] = r / 2
+            # self.obj.centre_radii[self.nlp+1:] = r / 2
             for i in range(self.nlp + 1, n):
                 self.obj.centre_regions[i].radius = r / 2
 
@@ -379,7 +378,7 @@ class DBMOPP:
             # print("centre radii", self.obj.centre_radii)
 
             # linearly decrease local front radii
-            self.obj.centre_radii[:self.nlp+1] = self.obj.centre_radii[:self.nlp+1] * w[:self.nlp+1]
+            # self.obj.centre_radii[:self.nlp+1] = self.obj.centre_radii[:self.nlp+1] * w[:self.nlp+1]
             for i in range(self.nlp+1):
                 self.obj.centre_regions[i].radius = self.obj.centre_regions[i].radius * w[i]
 
@@ -435,7 +434,7 @@ class DBMOPP:
             Randomly place attractor regions in 2D space
         """
         print("place_attractors")
-        print("radii", self.obj.centre_radii)
+        # print("radii", self.obj.centre_radii)
         l = self.nlp + self.ngp
         ini_locs = np.zeros((l, 2, self.k))
 
@@ -605,9 +604,9 @@ class DBMOPP:
         if self.constraint_type == 2:
             # self.obj.hard_constraint_centres = self.obj.centre_list
             # self.obj.hard_constraint_radii = self.obj.centre_radii
-            self.obj.hard_regions = self.obj.centre_regions
+            self.obj.hard_constraint_regions = self.obj.centre_regions
         elif self.constraint_type == 5:
-            self.obj.soft_regions = self.obj.centre_regions
+            self.obj.soft_constraint_regions = self.obj.centre_regions
             # self.obj.soft_constraint_centres = self.obj.centre_list
             # self.obj.soft_constraint_radii = self.obj.centre_radii
 
@@ -641,19 +640,29 @@ class DBMOPP:
 
     # DBMOPP
     def get_hard_constraint_violation(self, x):
-        in_hard_constraint_region, _ = in_region_excluding_boundary(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, x)
-        return in_hard_constraint_region
+        if self.obj.hard_constraint_regions is None: return False
+        for hard_constraint_region in self.obj.hard_constraint_regions:
+            if hard_constraint_region.is_inside(x, include_boundary = False):
+                return True
+        return False
+        # in_hard_constraint_region, _ = in_region_excluding_boundary(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, x)
+        # return in_hard_constraint_region
 
     # DBMOPP
     def get_soft_constraint_violation(self, x):
-        in_soft_constraint_region, d = in_region(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, x)
-        if in_soft_constraint_region:
-            k = np.sum(d < self.obj.soft_constraint_radii)
-            if k > 0:
-                c = d - self.obj.soft_constraint_radii
-                c = c * k
-                return np.max(c)
-        return False
+        if self.obj.soft_constraint_regions is None: return False
+        for soft_constraint_region in self.obj.soft_constraint_regions:
+            if soft_constraint_region.is_inside(x, include_boundary = True):
+                return True
+        return False # what happens below?
+        # in_soft_constraint_region, d = in_region(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, x)
+        # if in_soft_constraint_region:
+        #     k = np.sum(d < self.obj.soft_constraint_radii)
+        #     if k > 0:
+        #         c = d - self.obj.soft_constraint_radii
+        #         c = c * k
+        #         return np.max(c)
+        # return False
 
     # MAYBE MOVE, alot of stuff object variables though
     def assign_design_dimension_projection(self):
@@ -680,8 +689,7 @@ class DBMOPP:
         
         """
         y = np.zeros(self.k)
-        for i in range(self.k):
-            print(self.obj.attractors[i])
+        for i in range(self.k): # HMM
             d = euclidean_distance(self.obj.attractors[i], x)
             y[i] = np.min(d)
         y *= self.obj.rescaleMultiplier
@@ -707,7 +715,8 @@ class DBMOPP:
         in_pareto_region, in_hull, index  = self.is_in_limited_region(x).values()
         if in_hull:
             if not in_pareto_region:
-                y += self.obj.centre_radii[index]
+                y += self.obj.centre_regions[index].radius
+                # y += self.obj.centre_radii[index]
         return y
 
     # DBMOPP
@@ -816,16 +825,17 @@ class DBMOPP:
                 ax.add_patch(rectangle)
         
         def plot_constraint_regions_v2(constraint_regions, color):
+            if constraint_regions is None: return
             for constraint_region in constraint_regions:
                 constraint_region.plot(color, ax)
             
-        plot_constraint_regions(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, 'black')
-        plot_constraint_regions(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, 'orange')
-        plot_constraint_regions(self.obj.neutral_region_centres, self.obj.neutral_region_radii, 'grey')
+        # plot_constraint_regions(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, 'black')
+        # plot_constraint_regions(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, 'orange')
+        # plot_constraint_regions(self.obj.neutral_region_centres, self.obj.neutral_region_radii, 'grey')
 
-        # plot_constraint_regions_v2(self.obj.hard_regions, 'black')
-        # plot_constraint_regions_v2(self.obj.soft_regions, 'orange')
-        # plot_constraint_regions_v2(self.obj.neutral_regions, 'grey')
+        plot_constraint_regions_v2(self.obj.hard_constraint_regions, 'black')
+        plot_constraint_regions_v2(self.obj.soft_constraint_regions, 'orange')
+        plot_constraint_regions_v2(self.obj.neutral_regions, 'grey')
 
 
         # PLOT DISCONNECTED PENALTY
@@ -935,7 +945,7 @@ if __name__=="__main__":
     n_disconnected_regions = 0 # atm wont work is > 0
     n_global_pareto_regions = 5 # seems like nlp <= gpr
     pareto_set_type = 0 
-    constraint_type = 0 
+    constraint_type = 5
     problem = DBMOPP(
         n_objectives,
         n_variables,
