@@ -66,18 +66,18 @@ def get_random_angles(n):
     return np.random.rand(n,1) * 2 * np.pi
 
 
-def in_region(centres, radii, x) -> Tuple[bool, np.ndarray]:
-    if centres is None or len(centres) < 1: return (False, np.array([]))
-    dist = euclidean_distance(centres, x)
-    in_region = np.any(dist <= radii)
-    return (in_region, dist)
+# def in_region(centres, radii, x) -> Tuple[bool, np.ndarray]:
+#     if centres is None or len(centres) < 1: return (False, np.array([]))
+#     dist = euclidean_distance(centres, x)
+#     in_region = np.any(dist <= radii)
+#     return (in_region, dist)
     
-# this and above could be combined/one method
-def in_region_excluding_boundary(centres, radii, x):
-    if (centres is None or len(centres) < 1): return (False, np.array([]))
-    d = euclidean_distance(centres, x)
-    in_region = np.any(d < radii)
-    return (in_region, d)
+# # this and above could be combined/one method
+# def in_region_excluding_boundary(centres, radii, x):
+#     if (centres is None or len(centres) < 1): return (False, np.array([]))
+#     d = euclidean_distance(centres, x)
+#     in_region = np.any(d < radii)
+#     return (in_region, d)
 
 
 def between_lines_rooted_at_pivot(x, pivot_loc, loc1, loc2) -> bool:

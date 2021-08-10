@@ -1,3 +1,4 @@
+import enum
 from utilities import *
 from typing import Dict, Tuple
 import numpy as np
@@ -291,7 +292,9 @@ class DBMOPP:
         
         # Neither constraint breached
         print("neither")
-        if in_region(self.obj.neutral_region_centres, self.obj.neutral_region_radii, x)[0]:
+        
+        # if in_region(self.obj.neutral_region_centres, self.obj.neutral_region_radii, x)[0]:
+        if self.check_neutral_regions(x):
             ans["obj_vector"] = self.obj.neutral_region_objective_values
         else: 
             ans["obj_vector"] = self.get_objectives(x)
@@ -638,23 +641,43 @@ class DBMOPP:
     def setNotAttractorRegionsAsProportionOfSpace(self, S, proportion_to_attain, other_center, other_radii):
         pass
 
-    # DBMOPP
-    def get_hard_constraint_violation(self, x):
-        if self.obj.hard_constraint_regions is None: return False
-        for hard_constraint_region in self.obj.hard_constraint_regions:
-            if hard_constraint_region.is_inside(x, include_boundary = False):
+    
+    def check_region(self, regions, x, include_boundary):
+        if regions is None: return False
+        for region in regions:
+            if region.is_inside(x, include_boundary):
                 return True
         return False
+
+    def check_neutral_regions(self, x):
+        return self.check_region(self.obj.neutral_regions, x, True)
+        # if self.obj.neutral_regions is None: return False
+        # for neutral_region in self.obj.neutral_regions:
+        #     if neutral_region.is_inside(x, include_boundary = True):
+        #         return True
+        # return False
+
+    # DBMOPP
+    def get_hard_constraint_violation(self, x):
+        return self.check_region(self.obj.hard_constraint_regions, x, False)
+        # if self.obj.hard_constraint_regions is None: return False
+        # for hard_constraint_region in self.obj.hard_constraint_regions:
+        #     if hard_constraint_region.is_inside(x, include_boundary = False):
+        #         return True
+        # return False
+
         # in_hard_constraint_region, _ = in_region_excluding_boundary(self.obj.hard_constraint_centres, self.obj.hard_constraint_radii, x)
         # return in_hard_constraint_region
 
     # DBMOPP
     def get_soft_constraint_violation(self, x):
-        if self.obj.soft_constraint_regions is None: return False
-        for soft_constraint_region in self.obj.soft_constraint_regions:
-            if soft_constraint_region.is_inside(x, include_boundary = True):
-                return True
-        return False # what happens below?
+        return self.check_region(self.obj.soft_constraint_regions, x, True)
+        # if self.obj.soft_constraint_regions is None: return False
+        # for soft_constraint_region in self.obj.soft_constraint_regions:
+        #     if soft_constraint_region.is_inside(x, include_boundary = True):
+        #         return True
+        # return False # what happens below?
+
         # in_soft_constraint_region, d = in_region(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, x)
         # if in_soft_constraint_region:
         #     k = np.sum(d < self.obj.soft_constraint_radii)
@@ -773,21 +796,44 @@ class DBMOPP:
 
     # Combine
     def update_with_discontinuity(self, x, y):
-        if self.obj.discontinuous_region_centres is None: return y # or len = 0 ?
-        dist = euclidean_distance(self.obj.discontinuous_region_centres, x)
-        dist[dist >= self.obj.discontinuous_region_radii] = 0 
-        if np.sum(dist) > 0: # Could check more efficiently
-            i = np.argmin(dist) # Umm should it be min of a value which is greater than 0
-            y = y + self.obj.discontinuous_region_objective_value_offset[i,:]
-        return y
+        return self._update(
+            self.obj.discontinuous_regions,
+            self.obj.discontinuous_region_objective_value_offset,
+            x,
+            y,    
+        )
+        # if self.obj.discontinuous_region_centres is None: return y # or len = 0 ?
+        # dist = euclidean_distance(self.obj.discontinuous_region_centres, x)
+        # dist[dist >= self.obj.discontinuous_region_radii] = 0 
+        # if np.sum(dist) > 0: # Could check more efficiently
+        #     i = np.argmin(dist) # Umm should it be min of a value which is greater than 0
+        #     y = y + self.obj.discontinuous_region_objective_value_offset[i,:]
+        # return y
 
     def update_with_neutrality(self, x, y):
-        if self.obj.neutral_region_centres is None: return y # or len = 0 ?
-        dist = euclidean_distance(self.obj.neutral_region_centres, x)
-        dist[dist >= self.obj.neutral_region_radii] = 0 
-        if np.sum(dist) > 0: # Could check more efficiently
-            i = np.argmin(dist) # Umm should it be min of a value which is greater than 0
-            y = y + self.obj.neutral_region_objective_values[i,:]
+        return self._update(
+            self.obj.neutral_regions,
+            self.obj.neutral_region_objective_values,
+            x,
+            y,    
+        )
+        # if self.obj.neutral_region_centres is None: return y # or len = 0 ?
+        # dist = euclidean_distance(self.obj.neutral_region_centres, x)
+        # dist[dist >= self.obj.neutral_region_radii] = 0 
+        # if np.sum(dist) > 0: # Could check more efficiently
+        #     i = np.argmin(dist) # Umm should it be min of a value which is greater than 0
+        #     y = y + self.obj.neutral_region_objective_values[i,:]
+        # return y
+
+    # remove offsets? offset to class ?
+    def _update(self, regions, offsets, x, y):
+        if regions is None: return y
+        distances = np.array(len(regions))
+        for region, i in enumerate(regions):
+            distances[i] = 0 if region.is_inside(x, include_boundary = True) else region.get_distance(x)
+        if np.any(distances > 0):
+            index = np.argmin(distances)
+            y = y + offsets[index,:]
         return y
 
     # PLOTTING
@@ -815,14 +861,14 @@ class DBMOPP:
             self.obj.attractor_regions[i].plot(ax, 'b') 
         
         # Plot contraint region circles
-        def plot_constraint_regions(centres, radii, color):
-            if radii is None: return
-            for i in range(len(radii)):
-                x = centres[i,0]
-                y = centres[i,1]
-                r = radii[i]
-                rectangle = Circle((x,y), r, fc = color, fill = True, alpha = 0.5)
-                ax.add_patch(rectangle)
+        # def plot_constraint_regions(centres, radii, color):
+        #     if radii is None: return
+        #     for i in range(len(radii)):
+        #         x = centres[i,0]
+        #         y = centres[i,1]
+        #         r = radii[i]
+        #         rectangle = Circle((x,y), r, fc = color, fill = True, alpha = 0.5)
+        #         ax.add_patch(rectangle)
         
         def plot_constraint_regions_v2(constraint_regions, color):
             if constraint_regions is None: return
