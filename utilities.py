@@ -37,9 +37,11 @@ def convhull(points):
     Returns:
         np.ndarray: The indices of the simplices that form the convex hull
     """
-    # TODO validate that enough unique points and so on
-    hull = ConvexHull(points)
-    return hull
+    try:
+       return ConvexHull(points)
+    except Exception:
+        print("failed to construct the convex hull, using the points as is")
+        return points
 
 
 def in_hull(x: np.ndarray, points: np.ndarray):

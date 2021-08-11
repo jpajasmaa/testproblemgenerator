@@ -12,6 +12,18 @@ from matplotlib import cm
 # utilities
 # TODO: figure out the structure
 
+class Attractor:
+    def __init__(self) -> None:
+        self._locations = None
+    
+    @property
+    def locations(self):
+        return self._locations
+
+    @locations.setter
+    def locations(self, value):
+        self._locations = value
+
 class Region:
     def __init__(self, centre: np.ndarray = None, radius: float = None):
         self._centre = centre
@@ -61,36 +73,41 @@ class Region:
         ax.add_patch(circle)
     
 
-class attractorRegion(Region):
+class AttractorRegion(Region):
     def __init__(self, locations, indices, centre, radius, convhull):
         self.locations = locations
         self.objective_indices = indices
         super().__init__(centre, radius)
-        self.convhull = convhull
+        self.convhull = convhull 
     
     def plot(self, ax, color = 'b'):
         """
-        Very basic atm, Just plot the outer lines
+
         """
         if self.convhull is None: return
-        p = self.locations
-        
-        for i in range(len(self.convhull.simplices)):
-            s = self.convhull.simplices[i]
-            ax.plot(p[s,0], p[s,1], color = 'black') # outline
 
-            # add points
-            ax.scatter(p[i,0], p[i,1], color = 'blue')
-            ax.annotate(i, (p[i,0], p[i,1]))
-        
-        ax.fill(p[self.convhull.vertices,0], p[self.convhull.vertices, 1], color=color, alpha = 0.7)
+        p = np.atleast_2d(self.locations)
+
+        if not isinstance(self.convhull, ConvexHull):
+            if p.shape[0] == 1:
+                ax.scatter(self.locations[:,0], self.locations[:,1])
+            else:
+                ax.plot(self.locations[:,0], self.locations[:,1])
+        else:
+            for i, s in enumerate(self.convhull.simplices):
+                ax.plot(p[s,0], p[s,1], color = 'black') # outline
+
+                # add points
+                ax.scatter(p[i,0], p[i,1], color = 'blue')
+                ax.annotate(i, (p[i,0], p[i,1]))
+            
+            ax.fill(p[self.convhull.vertices, 0], p[self.convhull.vertices, 1], color=color, alpha = 0.7)
+
 
 class DBMOPPobject:
     def __init__(self):
         self.rescaleConstant = 0 # What the hell is up with these two attributes
         self.rescaleMultiplier = 1 # They are only used once and even there they do nothing...
-        self.attractors = [] # GET RID OFF
-        self.attractor_regions = [] # array of attractorRegions 
         self.pi1 = None
         self.pi2 = None
        
@@ -99,29 +116,20 @@ class DBMOPPobject:
         self.pareto_angles = None
         self.rotations = None
 
-        # region class
-        # self.region = None
+        self.attractors = []  # Array of attractors
+        self.attractor_regions = [] # array of attractorRegions 
+
         self.centre_regions = None
-        # self.centre_list = None
-        # self.centre_radii = None
 
         self.neutral_regions = None
         self.neutral_region_objective_values = np.sqrt(8)
-        # self.neutral_region_centres = None
-        # self.neutral_region_radii = None
 
         self.hard_constraint_regions = None
-        # self.hard_constraint_centres = None
-        # self.hard_constraint_radii = None
 
         self.soft_constraint_regions = None
-        # self.soft_constraint_centres = None
-        # self.soft_constraint_radii = None
 
         self.discontinuous_regions = None
         self.discontinuous_region_objective_value_offset = None
-        # self.discontinuous_region_centres = None
-        # self.discontinuous_region_radii = None
 
         self.pivot_locations = None
         self.bracketing_locations_lower = None
@@ -320,8 +328,6 @@ class DBMOPP:
         self.check_valid_length(y)
         x = get_2D_version(y, self.obj.pi1, self.obj.pi2)
 
-
-
         for centre_region in self.obj.centre_regions:
             if centre_region.is_inside(x):
                 return in_hull()  # TODO
@@ -426,7 +432,7 @@ class DBMOPP:
 
         self.obj.attractor_regions = np.array([None] * (l + self.ndr))
 
-        for i in np.arange(0, l):
+        for i in np.arange(l):
             B = np.hstack((
                 np.cos(self.obj.pareto_angles + self.obj.rotations[i]),
                 np.sin(self.obj.pareto_angles + self.obj.rotations[i])
@@ -438,7 +444,7 @@ class DBMOPP:
             )
 
             # create attractor region
-            self.obj.attractor_regions[i] = attractorRegion(
+            self.obj.attractor_regions[i] = AttractorRegion(
                 locations = locs, 
                 indices = np.arange(self.k),
                 centre = self.obj.centre_regions[i].centre,
@@ -450,11 +456,14 @@ class DBMOPP:
                 ini_locs[i,:,k] = locs[k,:]
             
         # matlabcode copies locations to the attractors for easier use for plotting
-        self.obj.attractors = np.zeros((self.k, self.nlp + self.ngp, 2)) # Not sure about this
-        for i in range(self.k):
-            self.obj.attractors[i] = ini_locs[:,:,i]
+        # self.obj.attractors = np.zeros((self.k, self.nlp + self.ngp, 2)) # Not sure about this
+        self.obj.attractors = np.array([Attractor() for _ in range(self.k)])
 
-        for i in range(l+1, l + self.ndr):
+        for i in range(self.k):
+            # self.obj.attractors[i] = ini_locs[:,:,i]
+            self.obj.attractors[i].locations = ini_locs[:,:,i]
+
+        for i in range(l, l + self.ndr):
             locs = (
                 matlib.repmat(self.obj.centre_regions[i].centre, self.k,1) 
                 + (matlib.repmat(self.obj.centre_regions[i].radius, self.k, 2)
@@ -464,22 +473,23 @@ class DBMOPP:
                     ))
                 )
             )
-            n_include = np.random.permutation(self.k - 1) + 1 # Plus one as we want to include at least one
-            n_include = n_include[0] # Take the first one
-            print(n_include)
-            input()
-            I = np.argsort(np.random.rand(self.k))
 
-            self.obj.attractor_regions[i] = attractorRegion(
-                locations = locs[I[:n_include], :], 
-                indices = I[:n_include],
+            n_include = np.random.permutation(self.k - 1) + 1 # Plus one as we want to include at least one?
+            n_include = n_include[0] # Take the first one
+            I = np.argsort(np.random.rand(self.k))
+            j = I[:n_include]
+            self.obj.attractor_regions[i] = AttractorRegion(
+                locations = locs[j, :], 
+                indices = j,
                 centre = None, # HMMM
                 radius = self.obj.centre_regions[i].radius,
-                convhull = convhull(locs)
+                convhull = convhull(locs[j, :])
             )
    
             for k in range(n_include):
-                self.obj.attractors[k] = np.vstack((self.obj.attractors[k], locs[I[k], :]))
+                attractor_loc = self.obj.attractors[k].locations
+                # self.obj.attractors[k] = np.vstack((self.obj.attractors[k], locs[I[k], :]))
+                self.obj.attractors[k].locations = np.vstack((attractor_loc,  locs[I[k], :]))
 
     # DBMOPP
     def initialize(self):
@@ -678,15 +688,9 @@ class DBMOPP:
         
         """
         y = np.zeros(self.k)
-        print("attractor",self.obj.attractors)
-        for reg in self.obj.attractor_regions:
-            print("reg", reg.locations)
-
-        for i, attractor in enumerate(self.obj.attractors): # HMM
-            d = self.obj.attractor_regions[i].get_distance(x)
-
-            d1 = euclidean_distance(attractor, x)
-            y[i] = np.min(d1)
+        for i, attractor in enumerate(self.obj.attractors):
+            d = euclidean_distance(attractor.locations, x)
+            y[i] = np.min(d)
         y *= self.obj.rescaleMultiplier
         y += self.obj.rescaleConstant
         return y
@@ -699,7 +703,6 @@ class DBMOPP:
         if in_hull:
             if not in_pareto_region:
                 y += self.obj.centre_regions[index].radius
-                # y += self.obj.centre_radii[index]
         return y
     
     # DBMOPP
@@ -813,6 +816,8 @@ class DBMOPP:
         # dominance resistance set regions
         for i in range(self.nlp + self.ngp, self.nlp + self.ngp + self.ndr):
             # attractor regions should take care of different cases
+            print(i)
+            print(self.obj.attractor_regions)
             self.obj.attractor_regions[i].plot(ax, 'b') 
 
         
@@ -918,11 +923,11 @@ class DBMOPP:
     
 
 if __name__=="__main__":
-    n_objectives = 5 # qhull error < 3 ? 
+    n_objectives = 3
     n_variables = 3
-    n_local_pareto_regions = 1 # actually works but not sure if correct
-    n_disconnected_regions = 2 # atm wont work is > 0
-    n_global_pareto_regions = 5 # seems like nlp <= gpr
+    n_local_pareto_regions = 0 # actually works but not sure if correct
+    n_disconnected_regions = 0 
+    n_global_pareto_regions = 3 # seems like nlp <= gpr
     pareto_set_type = 0 
     constraint_type = 0
     problem = DBMOPP(
@@ -947,7 +952,7 @@ if __name__=="__main__":
 
     problem.plot_problem_instance()
     # problem.plot_pareto_set_members(100)
-    problem.plot_landscape_for_single_objective(0, 100)
+    # problem.plot_landscape_for_single_objective(0, 100)
 
     # show all plots
     plt.show()
