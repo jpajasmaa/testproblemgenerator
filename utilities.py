@@ -18,6 +18,8 @@ def get_2D_version(x, pi1, pi2):
         return x
     l = np.divide(np.dot(x, pi1), np.sum(pi1)) # Left side of vector
     r = np.divide(np.dot(x, pi2), np.sum(pi2)) # Right side of vector
+    print(pi1, pi2)
+    input()
     return np.hstack((l, r))
 
 def euclidean_distance(x1, x2):
@@ -102,14 +104,16 @@ def assign_design_dimension_projection(n_variables, vary_sol_density):
     if n_variables <= 2:
         print("fNo need to assign dimension projections as number of variables is already {n_variables}")
         return None, None
-    mask = np.random.permutation(n_variables)
+    mask = np.random.permutation(n_variables-1) # Test againt matlab
     if vary_sol_density:
-        diff = np.random.randint(0, n_variables)
+        diff = np.random.randint(n_variables)
         mask = mask[:diff] # Take the diff first elements
     else: 
         half = int(np.ceil(n_variables))
         mask = mask[:half] # Take half first elements
     pi1 = np.zeros(n_variables)
     pi1[mask] = True
-    pi2 = np.logical_not(pi1)
+    pi2 = pi1
+    pi2 = np.ones(n_variables)
+    pi2[mask] = False
     return pi1, pi2

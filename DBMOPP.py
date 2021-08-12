@@ -1,4 +1,4 @@
-import enum
+from oct2py import octave
 from utilities import *
 from typing import Dict, Tuple
 import numpy as np
@@ -501,6 +501,8 @@ class DBMOPP:
                 attractor_loc = self.obj.attractors[k].locations
                 # self.obj.attractors[k] = np.vstack((self.obj.attractors[k], locs[I[k], :]))
                 self.obj.attractors[k].locations = np.vstack((attractor_loc,  locs[I[k], :]))
+        
+     
 
     # DBMOPP
     def initialize(self):
@@ -511,15 +513,18 @@ class DBMOPP:
         self.obj.rotations = get_random_angles(len(self.obj.centre_regions))
         # now place attractors
         self.place_attractors()
+        
         if self.pareto_set_type != 0:
             self.place_disconnected_pareto_elements()
         self.place_discontinunities_neutral_and_checker_constraints()
+
         # set the neutral value to be the same in all neutral locations
         self.obj.neutral_region_objective_values = np.ones((1,self.k))*self.obj.neutral_region_objective_values; # CHECK
         self.place_vertex_constraint_locations()
         self.place_centre_constraint_locations()
         self.place_moat_constraint_locations()
         self.obj.pi1, self.obj.pi2 = assign_design_dimension_projection(self.n, self.vary_sol_density)
+        input()
 
     # DBMOPP
     def place_disconnected_pareto_elements(self):
@@ -682,12 +687,12 @@ class DBMOPP:
         y = np.zeros(self.k)
         for i, attractor in enumerate(self.obj.attractors):
             y[i] = attractor.get_minimum_distance(x)
-            # d = euclidean_distance(attractor.locations, x)
+            # d = euclidean_distance(attractor, x)
             # y[i] = np.min(d)
         y *= self.obj.rescaleMultiplier
         y += self.obj.rescaleConstant
         return y
-    
+
     # 
     def get_minimum_distances_to_attractors_overlap_or_discontinuous_form(self, x):
         print("get_minimum_distances_to_attractors_overlap_or_discontinuous_form")
@@ -828,13 +833,13 @@ class DBMOPP:
         print("disconnected Pareto penalty regions not yet plotted. THIS IS NOT IMPLEMENTED IN MATLAB")
 
         #plt.show()
-    
+
     def plot_landscape_for_single_objective(self, index, res = 500):
         if res < 1:
             raise Exception("Cannot grid the space with a resolution less than 1")
         if index not in np.arange(self.k):
             raise Exception(f"Index should be between 0 and {self.k-1}, was {index}.")
-        
+
         xy = np.linspace(-1,1, res)
         x, y = np.meshgrid(xy, xy)
 
@@ -843,14 +848,14 @@ class DBMOPP:
             for j in range(res):
                 decision_vector = np.hstack((xy[i], xy[j]))
                 obj_vector = self.evaluate_2D(decision_vector)["obj_vector"]
-                print(obj_vector)
                 z[i, j] = obj_vector[index]
-  
+
         fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
         ax.set_xlim(-1, 1)
         ax.set_ylim(-1, 1)
         ax.view_init(elev=90, azim=-90)
-        surf = ax.plot_surface(x, y, z, cmap = cm.plasma)
+        surf = ax.plot_surface(x, y, z.T, cmap=cm.plasma)
+        # contour if this works
         fig.colorbar(surf, shrink=0.5, aspect=5)
         #plt.show()
 
@@ -920,9 +925,9 @@ if __name__=="__main__":
     n_variables = 3
     n_local_pareto_regions = 0 # actually works but not sure if correct
     n_disconnected_regions = 0 
-    n_global_pareto_regions = 3 # seems like nlp <= gpr
+    n_global_pareto_regions = 2 # seems like nlp <= gpr
     pareto_set_type = 0 
-    constraint_type = 0
+    constraint_type = 2
     problem = DBMOPP(
         n_objectives,
         n_variables,
@@ -944,7 +949,7 @@ if __name__=="__main__":
     # print(moproblem.evaluate(x)) 
 
     problem.plot_problem_instance()
-    # problem.plot_pareto_set_members(100)
+    problem.plot_pareto_set_members(100)
     problem.plot_landscape_for_single_objective(0, 100)
 
     # show all plots
