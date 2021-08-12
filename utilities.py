@@ -21,6 +21,9 @@ def get_2D_version(x, pi1, pi2):
     return np.hstack((l, r))
 
 def euclidean_distance(x1, x2):
+    if x1 is None or x2 is None:
+        print("euclidean distance supplied with nonetype")
+        return None
     return np.linalg.norm(x1-x2, axis = -1)
     #return np.sqrt(np.power(np.sum((x1-x2),axis = -1), 2))
 
@@ -89,3 +92,24 @@ def between_lines_rooted_at_pivot(x, pivot_loc, loc1, loc2) -> bool:
     d2 = ( x[0] - pivot_loc[0])*(loc2[1] - pivot_loc[1]) - (x[1] - pivot_loc[1])*(loc2[0] - pivot_loc[0])
 
     return d1 == 0 or d2 == 0 or np.sign(d1) != np.sign(d2)
+
+def assign_design_dimension_projection(n_variables, vary_sol_density):
+    """
+    if more than two design dimensions in problem, need to assign
+    the mapping down from this higher space to the 2D version
+    which will be subsequantly evaluated
+    """
+    if n_variables <= 2:
+        print("fNo need to assign dimension projections as number of variables is already {n_variables}")
+        return None, None
+    mask = np.random.permutation(n_variables)
+    if vary_sol_density:
+        diff = np.random.randint(0, n_variables)
+        mask = mask[:diff] # Take the diff first elements
+    else: 
+        half = int(np.ceil(n_variables))
+        mask = mask[:half] # Take half first elements
+    pi1 = np.zeros(n_variables)
+    pi1[mask] = True
+    pi2 = np.logical_not(pi1)
+    return pi1, pi2

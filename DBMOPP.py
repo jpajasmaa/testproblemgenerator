@@ -23,6 +23,10 @@ class Attractor:
     @locations.setter
     def locations(self, value):
         self._locations = value
+    
+    def get_minimum_distance(self, x):
+        d = euclidean_distance(self.locations, x)
+        return np.min(d)
 
 class Region:
     def __init__(self, centre: np.ndarray = None, radius: float = None):
@@ -80,6 +84,13 @@ class AttractorRegion(Region):
         super().__init__(centre, radius)
         self.convhull = convhull 
     
+    def in_hull(self, x):
+        if isinstance(self.convhull, ConvexHull):
+            return in_hull(x, self.convhull.simplices)
+        else:
+            # check if between the two points or a point
+            print("TODO Attractor regions 2nd case of in hull")
+
     def plot(self, ax, color = 'b'):
         """
 
@@ -324,13 +335,13 @@ class DBMOPP:
         
         """
         print("in_convex_hull_of_attractor_region")
-        print("TODO indexi jumppa\n\n")
+
         self.check_valid_length(y)
         x = get_2D_version(y, self.obj.pi1, self.obj.pi2)
-
-        for centre_region in self.obj.centre_regions:
+        
+        for i, centre_region in enumerate(self.obj.centre_regions):
             if centre_region.is_inside(x):
-                return in_hull()  # TODO
+                return self.obj.attractor_regions[i].in_hull(x)
 
         return False
     
@@ -508,7 +519,7 @@ class DBMOPP:
         self.place_vertex_constraint_locations()
         self.place_centre_constraint_locations()
         self.place_moat_constraint_locations()
-        self.assign_design_dimension_projection()
+        self.obj.pi1, self.obj.pi2 = assign_design_dimension_projection(self.n, self.vary_sol_density)
 
     # DBMOPP
     def place_disconnected_pareto_elements(self):
@@ -648,25 +659,6 @@ class DBMOPP:
         #         return np.max(c)
         # return False
 
-    # MAYBE MOVE, alot of stuff object variables though
-    def assign_design_dimension_projection(self):
-        """
-        if more than two design dimensions in problem, need to assign
-        the mapping down from this higher space to the 2D version
-        which will be subsequantly evaluated
-        """
-        if self.n > 2:
-            mask = np.random.permutation(self.n)
-            if self.vary_sol_density:
-                diff = np.random.randint(0, self.n)
-                mask = mask[:diff] # Take the diff first elements
-            else: 
-                half = int(np.ceil(self.n/2))
-                mask = mask[:half] # Take half first elements
-            self.obj.pi1 = np.zeros(self.n)
-            self.obj.pi1[mask] = True
-            self.obj.pi2 = np.logical_not(self.obj.pi1)
-
     # Attractors class, WHAT WE WANT
     def get_minimun_distance_to_attractors2(self, x: np.ndarray):
         """
@@ -689,13 +681,14 @@ class DBMOPP:
         """
         y = np.zeros(self.k)
         for i, attractor in enumerate(self.obj.attractors):
-            d = euclidean_distance(attractor.locations, x)
-            y[i] = np.min(d)
+            y[i] = attractor.get_minimum_distance(x)
+            # d = euclidean_distance(attractor.locations, x)
+            # y[i] = np.min(d)
         y *= self.obj.rescaleMultiplier
         y += self.obj.rescaleConstant
         return y
     
-    # Attractors class
+    # 
     def get_minimum_distances_to_attractors_overlap_or_discontinuous_form(self, x):
         print("get_minimum_distances_to_attractors_overlap_or_discontinuous_form")
         y = self.get_minimun_distance_to_attractors(x)
@@ -952,7 +945,7 @@ if __name__=="__main__":
 
     problem.plot_problem_instance()
     # problem.plot_pareto_set_members(100)
-    # problem.plot_landscape_for_single_objective(0, 100)
+    problem.plot_landscape_for_single_objective(0, 100)
 
     # show all plots
     plt.show()
