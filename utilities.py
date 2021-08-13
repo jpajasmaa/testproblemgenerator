@@ -19,7 +19,6 @@ def get_2D_version(x, pi1, pi2):
     l = np.divide(np.dot(x, pi1), np.sum(pi1)) # Left side of vector
     r = np.divide(np.dot(x, pi2), np.sum(pi2)) # Right side of vector
     print(pi1, pi2)
-    input()
     return np.hstack((l, r))
 
 def euclidean_distance(x1, x2):

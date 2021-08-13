@@ -659,12 +659,12 @@ class DBMOPP:
     # DBMOPP
     def place_discontinunities_neutral_and_checker_constraints(self):
         print('Assigning any checker soft/hard constraint regions and neutral regions\n')
-        return
+        
 
         s = (np.random.rand(self.nm, 2) * 2) - 1
         for _i, centre_region in enumerate(self.obj.centre_regions):
             to_remove = centre_region.is_inside(s, True)
-            s[to_remove, :] = [] # Wont work?
+            s = s[to_remove, :] # Wont work?
         
         if len(s) < self.nm * (self.prop_contraint_checker + self.prop_neutral):
             msg = 'Not enough space outside of attractor regions to match requirement of constrained+neural space'
@@ -694,6 +694,22 @@ class DBMOPP:
     def set_not_attractor_regions_as_proportion_of_space(self, S, proportion_to_attain, other_regions):
         print("set_not_attractor_regions_as_proportion_of_space")
         print("is going to be a pain with these classes...\n\n")
+        allocation = 0
+        regions = []
+        while allocation < proportion_to_attain:
+            region = Region()
+            region.centre = S[-1, :]
+            regions.append(region)
+
+            centre_list = [] # np arrayks
+            for i, centre_region in enumerate(self.obj.centre_regions):
+                centre_list.append(centre_region.centre)
+            
+            other_centres = []
+            for i, other_centre in other_regions:
+                other_centres.append(other_centre.centre)
+            d = euclidean_distance(np.hstack((centre_list, other_centres)), S[-1, :]) # could maybe do in one loop 
+    
         return
 
     
