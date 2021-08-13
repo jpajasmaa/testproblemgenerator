@@ -524,7 +524,6 @@ class DBMOPP:
         self.place_centre_constraint_locations()
         self.place_moat_constraint_locations()
         self.obj.pi1, self.obj.pi2 = assign_design_dimension_projection(self.n, self.vary_sol_density)
-        input()
 
     # DBMOPP
     def place_disconnected_pareto_elements(self):
@@ -599,7 +598,35 @@ class DBMOPP:
         """
         Place constraints located at attractor points
         """
-        pass
+        print('Assigning any vertex soft/hard constraint regions\n')
+        if (self.constraint_type in [1,4]):
+            
+
+            to_place = 0
+            for i in range(len(self.obj.attractors)): # or self.k as that should be the same...
+                to_place += len(self.obj.attractors[i].locations)
+            
+            centres = np.zeros((to_place, 2))
+            radii = np.zeros(to_place)
+            k = 0
+
+            penalty_radius = np.random.rand(1) / 2
+            for i, attractor_region in enumerate(self.obj.attractor_regions):
+                for j in range(len(attractor_region.objective_indices)):
+                    centres[k,:] = attractor_region.locations[j,:]
+                    radii[k] = attractor_region.radius * penalty_radius
+                    k += 1
+            
+            if self.constraint_type == 1:
+                self.obj.hard_constraint_regions = np.array([Region() for _ in range(to_place)])
+                for i, hard_constraint_region in enumerate(self.obj.hard_constraint_regions):
+                    hard_constraint_region.centre = centres[i,:]
+                    hard_constraint_region.radius = radii[i]
+            else:
+                self.obj.soft_constraint_regions = np.array([Region() for _ in range(to_place)])
+                for i, soft_constraint_region in enumerate(self.obj.soft_constraint_regions):
+                    soft_constraint_region.centre = centres[i,:]
+                    soft_constraint_region.radius = radii[i]
 
     # DBMOPP
     def place_centre_constraint_locations(self):
@@ -654,6 +681,7 @@ class DBMOPP:
 
     # DBMOPP
     def get_soft_constraint_violation(self, x):
+        print("get_soft_constraint_violation might not do the same thing \n\n")
         return self.check_region(self.obj.soft_constraint_regions, x, True)
         # in_soft_constraint_region, d = in_region(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, x)
         # if in_soft_constraint_region:
@@ -764,7 +792,6 @@ class DBMOPP:
         return ans
 
 
-    # Combine
     def update_with_discontinuity(self, x, y):
         return self._update(
             self.obj.discontinuous_regions,
@@ -781,7 +808,6 @@ class DBMOPP:
             y,    
         )
 
-    # remove offsets? offset to class ?
     def _update(self, regions, offsets, x, y):
         if regions is None: return y
         distances = np.array(len(regions))
@@ -927,7 +953,7 @@ if __name__=="__main__":
     n_disconnected_regions = 0 
     n_global_pareto_regions = 2 # seems like nlp <= gpr
     pareto_set_type = 0 
-    constraint_type = 2
+    constraint_type = 4
     problem = DBMOPP(
         n_objectives,
         n_variables,
