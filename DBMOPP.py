@@ -1,3 +1,4 @@
+import enum
 from oct2py import octave
 from utilities import *
 from typing import Dict, Tuple
@@ -613,7 +614,7 @@ class DBMOPP:
             penalty_radius = np.random.rand(1) / 2
             for i, attractor_region in enumerate(self.obj.attractor_regions):
                 for j in range(len(attractor_region.objective_indices)):
-                    centres[k,:] = attractor_region.locations[j,:]
+                    centres[k,:] = attractor_region.locations[j,:] # Could make an object here...
                     radii[k] = attractor_region.radius * penalty_radius
                     k += 1
             
@@ -657,11 +658,42 @@ class DBMOPP:
 
     # DBMOPP
     def place_discontinunities_neutral_and_checker_constraints(self):
-        pass
+        print('Assigning any checker soft/hard constraint regions and neutral regions\n')
+
+        s = (np.random.rand(self.nm, 2) * 2) - 1
+        for _i, centre_region in enumerate(self.obj.centre_regions):
+            to_remove = centre_region.is_inside(s, True)
+            s[to_remove, :] = [] # Wont work?
+        
+        if len(s) < self.nm * (self.prop_contraint_checker + self.prop_neutral):
+            msg = 'Not enough space outside of attractor regions to match requirement of constrained+neural space'
+            raise Exception(msg)
+        
+        # some_nice_size = 5
+        # regions = np.array([Region() for _ in range(some_nice_size)])
+        if self.prop_contraint_checker > 0:
+            regions = self.setNotAttractorRegionsAsProportionOfSpace(s, self.prop_contraint_checker, [])
+
+            if self.constraint_type == 4:
+                self.obj.hard_constraint_regions = regions
+            elif self.constraint_type == 8:
+                self.obj.soft_constraint_regions = regions
+            else: # DOesnt make this check in some other function... but okayt
+                raise Exception(f"constraintType should be 8 or 4 to reach here is {self.constraint_type}")
+        
+        # Neutral space
+        if self.prop_neutral > 0:
+            regions = self.set_not_attractor_regions_as_proportion_of_space(s, self.prop_neutral, regions)
+            self.obj.neutral_regions = regions
+        
+        print("TODO check discontinuity, not done in matlab")
+
 
     # DBMOPP
-    def setNotAttractorRegionsAsProportionOfSpace(self, S, proportion_to_attain, other_center, other_radii):
-        pass
+    def set_not_attractor_regions_as_proportion_of_space(self, S, proportion_to_attain, other_regions):
+        print("set_not_attractor_regions_as_proportion_of_space")
+        print("is going to be a pain with these classes...\n\n")
+        return
 
     
     def check_region(self, regions, x, include_boundary):
@@ -954,6 +986,7 @@ if __name__=="__main__":
     n_global_pareto_regions = 2 # seems like nlp <= gpr
     pareto_set_type = 0 
     constraint_type = 4
+    
     problem = DBMOPP(
         n_objectives,
         n_variables,
