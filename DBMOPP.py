@@ -659,6 +659,7 @@ class DBMOPP:
     # DBMOPP
     def place_discontinunities_neutral_and_checker_constraints(self):
         print('Assigning any checker soft/hard constraint regions and neutral regions\n')
+        return
 
         s = (np.random.rand(self.nm, 2) * 2) - 1
         for _i, centre_region in enumerate(self.obj.centre_regions):
