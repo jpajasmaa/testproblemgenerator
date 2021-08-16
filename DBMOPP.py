@@ -694,7 +694,6 @@ class DBMOPP:
     # DBMOPP
     def set_not_attractor_regions_as_proportion_of_space(self, S, proportion_to_attain, other_regions):
         print("set_not_attractor_regions_as_proportion_of_space")
-        print("is going to be a pain with these classes...\n\n")
         allocation = 0
         regions = []
         while allocation < proportion_to_attain:
@@ -928,8 +927,8 @@ class DBMOPP:
                 constraint_region.plot(color, ax)
 
         plot_constraint_regions(self.obj.hard_constraint_regions, 'black')
-        plot_constraint_regions(self.obj.soft_constraint_regions, 'orange')
-        plot_constraint_regions(self.obj.neutral_regions, 'grey')
+        plot_constraint_regions(self.obj.soft_constraint_regions, 'grey')
+        plot_constraint_regions(self.obj.neutral_regions, 'c')
 
 
         # PLOT DISCONNECTED PENALTY
@@ -952,7 +951,6 @@ class DBMOPP:
                 decision_vector = np.hstack((xy[i], xy[j]))
                 obj_vector = self.evaluate_2D(decision_vector)["obj_vector"]
                 obj_vector = np.atleast_2d(obj_vector)
-                print(obj_vector[0])
                 z[i, j] = obj_vector[0, index]
 
         fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
@@ -1055,8 +1053,8 @@ if __name__=="__main__":
     print(moproblem.evaluate(x)) 
 
     my_complex_instance.plot_problem_instance()
-    my_complex_instance.plot_pareto_set_members(100)
-    my_complex_instance.plot_landscape_for_single_objective(0, 100)
+    # my_complex_instance.plot_pareto_set_members(100)
+    # my_complex_instance.plot_landscape_for_single_objective(0, 100)
 
     # show all plots
     plt.show()
