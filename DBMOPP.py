@@ -254,6 +254,8 @@ class DBMOPP:
             msg += f"Global pareto set type should be a integer number between 0 and 2, was {pareto_set_type}.\n"
         if constraint_type not in np.arange(9):
             msg += f"Constraint type should be a integer number between 0 and 8, was {constraint_type}.\n"
+        if constraint_type not in [4,8] and prop_constraint_checker != 0: 
+            msg += f"Proporortion of constrained space checker should be 0 if constraint type is not 4 or 8, was constraint type {constraint_type} and prop {prop_constraint_checker}"
         if ndo < 0:
             msg += f"Number of discontinuous objective function regions should be greater than or equal to zero, was {ndo}.\n"
         if not 0 <= prop_neutral <= 1:
@@ -661,21 +663,19 @@ class DBMOPP:
         print('Assigning any checker soft/hard constraint regions and neutral regions\n')
         
 
-        s = (np.random.rand(self.nm, 2) * 2) - 1
+        S = (np.random.rand(self.nm, 2) * 2) - 1
         for _i, centre_region in enumerate(self.obj.centre_regions):
-            to_remove = centre_region.is_inside(s, True)
+            to_remove = centre_region.is_inside(S, True)
             not_to_remove = np.logical_not(to_remove)
-            s = s[not_to_remove, :] # Wont work?
+            S = S[not_to_remove, :] # Wont work?
         
-        if s.shape[0] < self.nm * (self.prop_contraint_checker + self.prop_neutral):
+        if S.shape[0] < self.nm * (self.prop_contraint_checker + self.prop_neutral):
             msg = 'Not enough space outside of attractor regions to match requirement of constrained+neural space'
             raise Exception(msg)
         
-        # some_nice_size = 5
-        # regions = np.array([Region() for _ in range(some_nice_size)])
         if self.prop_contraint_checker > 0:
-            regions = self.set_not_attractor_regions_as_proportion_of_space(s, self.prop_contraint_checker, [])
-
+            regions, S = self.set_not_attractor_regions_as_proportion_of_space(S, self.prop_contraint_checker, [])
+        
             if self.constraint_type == 4:
                 self.obj.hard_constraint_regions = regions
             elif self.constraint_type == 8:
@@ -685,9 +685,9 @@ class DBMOPP:
         
         # Neutral space
         if self.prop_neutral > 0:
-            regions = self.set_not_attractor_regions_as_proportion_of_space(s, self.prop_neutral, regions)
+            regions, _ = self.set_not_attractor_regions_as_proportion_of_space(S, self.prop_neutral, regions)
             self.obj.neutral_regions = regions
-        
+
         print("TODO check discontinuity, not done in matlab")
 
 
@@ -699,20 +699,27 @@ class DBMOPP:
         regions = []
         while allocation < proportion_to_attain:
             region = Region()
+           #if S.size == 0: break
             region.centre = S[-1, :]
             
-
             centre_list = np.zeros((len(self.obj.centre_regions), 2))
+            centre_radii = np.zeros(len(self.obj.centre_regions))
             for i, centre_region in enumerate(self.obj.centre_regions):
                 centre_list[i] = centre_region.centre
+                centre_radii[i] = centre_region.radius
             
             other_centres = np.zeros((len(other_regions), 2))
-            for i, other_region in other_regions:
+            other_radii = np.zeros(len(other_regions))
+    
+            for i, other_region in enumerate(other_regions):
                 other_centres[i] = other_region.centre
+                other_radii[i] = other_region.radius
 
-            both_centres = np.hstack((centre_list, other_centres)) if other_centres.shape[0] > 0 else centre_list
+            # input(other_centres.shape)
+            both_centres = np.vstack((centre_list, other_centres)) if other_centres.shape[0] > 0 else centre_list
 
             d = euclidean_distance(both_centres, S[-1, :]) # could maybe do in one loop 
+            d = d - np.hstack((centre_radii, other_radii))
             d = np.min(d)
 
             if d <= 0:
@@ -721,15 +728,17 @@ class DBMOPP:
             c_r = np.sqrt((proportion_to_attain - allocation)/ np.pi)
             r = np.random.rand(1)*np.minimum(d, c_r)
             region.radius = r 
+            regions.append(region)
             S = S[:-1, :] # remove last row
 
             d = euclidean_distance(S, region.centre) # constrainedCentres(end,:) == region.centre? should be?
             I = d > r
+            covered_count = (I == False).sum() + 1
             S = S[I,:] # Remove covered points
-            covered_count = 1 + I.shape[0]
+
             allocation += covered_count/self.nm
 
-        return np.array(regions) # , S # Does it need to return S, does any method use it
+        return np.array(regions) , S
 
     
     def check_region(self, regions, x, include_boundary):
@@ -878,8 +887,8 @@ class DBMOPP:
 
     def _update(self, regions, offsets, x, y):
         if regions is None: return y
-        distances = np.array(len(regions))
-        for region, i in enumerate(regions):
+        distances = np.zeros(len(regions))
+        for i, region in enumerate(regions):
             distances[i] = region.get_distance(x) if region.is_inside(x, include_boundary = True) else 0
         if np.any(distances > 0):
             index = np.argmin(distances) # molst likely will return the index of the first 0
@@ -942,7 +951,9 @@ class DBMOPP:
             for j in range(res):
                 decision_vector = np.hstack((xy[i], xy[j]))
                 obj_vector = self.evaluate_2D(decision_vector)["obj_vector"]
-                z[i, j] = obj_vector[index]
+                obj_vector = np.atleast_2d(obj_vector)
+                print(obj_vector[0])
+                z[i, j] = obj_vector[0, index]
 
         fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
         ax.set_xlim(-1, 1)
@@ -1034,7 +1045,7 @@ if __name__=="__main__":
         constraint_type, 0, False, False, 0, 10000
     )
 
-    my_complex_instance = DBMOPP(3,10,3,3,2,0.3,2,8,2,False, True, 0.2)
+    my_complex_instance = DBMOPP(3,10,3,3,2,0.3,2,4,2,False, True, 0.2)
 
     print("Initializing works!")
     x = np.random.rand(1, n_variables)
