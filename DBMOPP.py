@@ -1,5 +1,3 @@
-import enum
-from oct2py import octave
 from utilities import *
 from typing import Dict, Tuple
 import numpy as np
@@ -89,8 +87,11 @@ class AttractorRegion(Region):
         if isinstance(self.convhull, ConvexHull):
             return in_hull(x, self.convhull.simplices)
         else:
-            # check if between the two points or a point
-            print("TODO Attractor regions 2nd case of in hull")
+            if self.locations.shape[0] == 1:
+                return self.locations == x
+            else:
+                pass
+                #check if between 2 points
 
     def plot(self, ax, color = 'b'):
         """
@@ -102,9 +103,9 @@ class AttractorRegion(Region):
 
         if not isinstance(self.convhull, ConvexHull):
             if p.shape[0] == 1:
-                ax.scatter(self.locations[:,0], self.locations[:,1])
+                ax.scatter(self.locations[:,0], self.locations[:,1], color=color)
             else:
-                ax.plot(self.locations[:,0], self.locations[:,1])
+                ax.plot(self.locations[:,0], self.locations[:,1], color=color)
         else:
             for i, s in enumerate(self.convhull.simplices):
                 ax.plot(p[s,0], p[s,1], color = 'black') # outline
@@ -313,7 +314,6 @@ class DBMOPP:
             return ans
         
         # Neither constraint breached
-        print("neither")
         
         if self.check_neutral_regions(x):
             ans["obj_vector"] = self.obj.neutral_region_objective_values
@@ -337,8 +337,6 @@ class DBMOPP:
         """
         
         """
-        print("in_convex_hull_of_attractor_region")
-
         self.check_valid_length(y)
         x = get_2D_version(y, self.obj.pi1, self.obj.pi2)
         
@@ -348,7 +346,6 @@ class DBMOPP:
 
         return False
     
-
     # DBMOPP
     def check_valid_length(self, x):
         x = np.atleast_2d(x)
@@ -382,7 +379,6 @@ class DBMOPP:
         for i in range(n):
             self.obj.centre_regions[i].radius = r
 
-
         if self.nlp > 0:
             # TODO: when locals taken into account. Does not work yet
             # self.obj.centre_radii[self.nlp+1:] = r / 2
@@ -390,8 +386,6 @@ class DBMOPP:
                 self.obj.centre_regions[i].radius = r / 2
 
             w = np.linspace(1, 0.5, self.nlp+1)
-
-            print("w", w)
 
             for i in range(self.nlp+1):
                 self.obj.centre_regions[i].radius = self.obj.centre_regions[i].radius * w[i]
@@ -411,9 +405,6 @@ class DBMOPP:
         max_elapsed = 1 # Max seconds after reattempt. THIS IS VERY DUMP!
         rand_coord = (np.random.rand(2)*2*effective_bound) - effective_bound
         self.obj.centre_regions[0].centre = rand_coord
-        
-        print('tres', threshold)
-        print('Radius: ', r)
 
         for i in np.arange(1, n): # looping the objects would be nicer
             while True:
@@ -440,7 +431,6 @@ class DBMOPP:
         """
             Randomly place attractor regions in 2D space
         """
-        print("place_attractors")
         l = self.nlp + self.ngp
         ini_locs = np.zeros((l, 2, self.k))
 
@@ -680,7 +670,7 @@ class DBMOPP:
                 self.obj.hard_constraint_regions = regions
             elif self.constraint_type == 8:
                 self.obj.soft_constraint_regions = regions
-            else: # DOesnt make this check in some other function... but okayt
+            else:
                 raise Exception(f"constraintType should be 8 or 4 to reach here is {self.constraint_type}")
         
         # Neutral space
@@ -693,7 +683,6 @@ class DBMOPP:
 
     # DBMOPP
     def set_not_attractor_regions_as_proportion_of_space(self, S, proportion_to_attain, other_regions):
-        print("set_not_attractor_regions_as_proportion_of_space")
         allocation = 0
         regions = []
         while allocation < proportion_to_attain:
@@ -757,33 +746,22 @@ class DBMOPP:
 
     # DBMOPP
     def get_soft_constraint_violation(self, x):
-        print("get_soft_constraint_violation might not do the same thing \n\n")
-        return self.check_region(self.obj.soft_constraint_regions, x, True)
-        # in_soft_constraint_region, d = in_region(self.obj.soft_constraint_centres, self.obj.soft_constraint_radii, x)
-        # if in_soft_constraint_region:
-        #     k = np.sum(d < self.obj.soft_constraint_radii)
-        #     if k > 0:
-        #         c = d - self.obj.soft_constraint_radii
-        #         c = c * k
-        #         return np.max(c)
-        # return False
+        in_soft_constraint_region = self.check_region(self.obj.soft_constraint_regions, x, True)
+        # return in_soft_constraint_region
+        if in_soft_constraint_region:
+            d = np.zeros(len(self.obj.soft_constraint_regions))
+            radiis = np.zeros(len(self.obj.soft_constraint_regions))
+            for i, soft_constraint_region in enumerate(self.obj.soft_constraint_regions):
+                d[i] = soft_constraint_region.get_distance(x)
+                radiis[i] = soft_constraint_region.radius
+            k = np.sum(d < self.obj.soft_constraint_radii)
+            print(k)
+            if k > 0:
+                c = d - radiis
+                c = c * k
+                return np.max(c)
+        return False
 
-    # Attractors class, WHAT WE WANT
-    def get_minimun_distance_to_attractors2(self, x: np.ndarray):
-        """
-        
-        """
-        y = np.zeros(self.k)
-        for  i, attractor_region in enumerate(self.obj.attractor_regions): # HMM
-
-            d = attractor_region.get_distance(x) 
-            y[i] = np.min(d)
-            if i == self.k - 1: break
-        y *= self.obj.rescaleMultiplier
-        y += self.obj.rescaleConstant
-        return y
-    
-    #
     def get_minimun_distance_to_attractors(self, x: np.ndarray):
         """
         
@@ -791,15 +769,11 @@ class DBMOPP:
         y = np.zeros(self.k)
         for i, attractor in enumerate(self.obj.attractors):
             y[i] = attractor.get_minimum_distance(x)
-            # d = euclidean_distance(attractor, x)
-            # y[i] = np.min(d)
         y *= self.obj.rescaleMultiplier
         y += self.obj.rescaleConstant
         return y
 
-    # 
     def get_minimum_distances_to_attractors_overlap_or_discontinuous_form(self, x):
-        print("get_minimum_distances_to_attractors_overlap_or_discontinuous_form")
         y = self.get_minimun_distance_to_attractors(x)
         in_pareto_region, in_hull, index  = self.is_in_limited_region(x).values()
         if in_hull:
@@ -809,7 +783,6 @@ class DBMOPP:
     
     # DBMOPP
     def get_objectives(self, x):
-        print("Get objectives")
         if (self.pareto_set_type == 0):
             y = self.get_minimun_distance_to_attractors(x)
         else:
@@ -824,7 +797,6 @@ class DBMOPP:
         """
         
         """
-        #print("is_in_limited_region")
         ans = {
             "in_pareto_region": False,
             "in_hull": False,
@@ -860,7 +832,6 @@ class DBMOPP:
                     self.obj.bracketing_locations_lower[I[0],:],
                     self.obj.bracketing_locations_upper[I[0],:],
                 )
-                print("dis ans", ans)
                 if self.pareto_set_type == 1:
                     if I[0] == self.nlp + self.ngp: # should maybe be -1
                         ans["in_pareto_region"] = not ans["in_pareto_region"] # special case where last region is split at the two sides, should not get here everytime
@@ -894,6 +865,9 @@ class DBMOPP:
             y = y + offsets[index,:]
         return y
 
+
+
+
     # PLOTTING
 
     def plot_problem_instance(self):
@@ -916,8 +890,6 @@ class DBMOPP:
         # dominance resistance set regions
         for i in range(self.nlp + self.ngp, self.nlp + self.ngp + self.ndr):
             # attractor regions should take care of different cases
-            print(i)
-            print(self.obj.attractor_regions)
             self.obj.attractor_regions[i].plot(ax, 'b') 
 
         
@@ -958,7 +930,7 @@ class DBMOPP:
         ax.set_ylim(-1, 1)
         ax.view_init(elev=90, azim=-90)
 
-        surf = ax.plot_surface(x, y, z.T, cmap=cm.plasma, linewidth=0, antialiased = False, vmin = 0, vmax = np.nanmax(z))
+        surf = ax.plot_surface(x, y, z.T, cmap=cm.plasma, linewidth=0, antialiased = False, vmin =  np.nanmin(z), vmax = np.nanmax(z))
 
         fig.colorbar(surf, shrink=0.5, aspect=5)
         #plt.show()
@@ -1027,11 +999,11 @@ class DBMOPP:
 if __name__=="__main__":
     n_objectives = 3
     n_variables = 3
-    n_local_pareto_regions = 0 # actually works but not sure if correct
+    n_local_pareto_regions = 0 
     n_disconnected_regions = 0 
-    n_global_pareto_regions = 2 # seems like nlp <= gpr
-    pareto_set_type = 0 
-    constraint_type = 4
+    n_global_pareto_regions = 5
+    pareto_set_type = 2
+    constraint_type = 1
     
     problem = DBMOPP(
         n_objectives,
@@ -1053,9 +1025,9 @@ if __name__=="__main__":
 
     print(moproblem.evaluate(x)) 
 
-    my_complex_instance.plot_problem_instance()
-    # my_complex_instance.plot_pareto_set_members(100)
-    my_complex_instance.plot_landscape_for_single_objective(0, 50)
+    problem.plot_problem_instance()
+    problem.plot_pareto_set_members(150)
+    # problem.plot_landscape_for_single_objective(0, 150)
 
     # show all plots
     plt.show()
