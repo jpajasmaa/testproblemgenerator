@@ -952,13 +952,14 @@ class DBMOPP:
                 obj_vector = self.evaluate_2D(decision_vector)["obj_vector"]
                 obj_vector = np.atleast_2d(obj_vector)
                 z[i, j] = obj_vector[0, index]
-
+    
         fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
         ax.set_xlim(-1, 1)
         ax.set_ylim(-1, 1)
         ax.view_init(elev=90, azim=-90)
-        surf = ax.plot_surface(x, y, z.T, cmap=cm.plasma)
-        # contour if this works
+
+        surf = ax.plot_surface(x, y, z.T, cmap=cm.plasma, linewidth=0, antialiased = False, vmin = 0, vmax = np.nanmax(z))
+
         fig.colorbar(surf, shrink=0.5, aspect=5)
         #plt.show()
 
@@ -1054,7 +1055,7 @@ if __name__=="__main__":
 
     my_complex_instance.plot_problem_instance()
     # my_complex_instance.plot_pareto_set_members(100)
-    # my_complex_instance.plot_landscape_for_single_objective(0, 100)
+    my_complex_instance.plot_landscape_for_single_objective(0, 50)
 
     # show all plots
     plt.show()
