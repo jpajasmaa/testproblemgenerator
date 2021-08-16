@@ -664,16 +664,17 @@ class DBMOPP:
         s = (np.random.rand(self.nm, 2) * 2) - 1
         for _i, centre_region in enumerate(self.obj.centre_regions):
             to_remove = centre_region.is_inside(s, True)
-            s = s[to_remove, :] # Wont work?
+            not_to_remove = np.logical_not(to_remove)
+            s = s[not_to_remove, :] # Wont work?
         
-        if len(s) < self.nm * (self.prop_contraint_checker + self.prop_neutral):
+        if s.shape[0] < self.nm * (self.prop_contraint_checker + self.prop_neutral):
             msg = 'Not enough space outside of attractor regions to match requirement of constrained+neural space'
             raise Exception(msg)
         
         # some_nice_size = 5
         # regions = np.array([Region() for _ in range(some_nice_size)])
         if self.prop_contraint_checker > 0:
-            regions = self.setNotAttractorRegionsAsProportionOfSpace(s, self.prop_contraint_checker, [])
+            regions = self.set_not_attractor_regions_as_proportion_of_space(s, self.prop_contraint_checker, [])
 
             if self.constraint_type == 4:
                 self.obj.hard_constraint_regions = regions
@@ -699,18 +700,36 @@ class DBMOPP:
         while allocation < proportion_to_attain:
             region = Region()
             region.centre = S[-1, :]
-            regions.append(region)
-
-            centre_list = [] # np arrayks
-            for i, centre_region in enumerate(self.obj.centre_regions):
-                centre_list.append(centre_region.centre)
             
-            other_centres = []
-            for i, other_centre in other_regions:
-                other_centres.append(other_centre.centre)
-            d = euclidean_distance(np.hstack((centre_list, other_centres)), S[-1, :]) # could maybe do in one loop 
-    
-        return
+
+            centre_list = np.zeros((len(self.obj.centre_regions), 2))
+            for i, centre_region in enumerate(self.obj.centre_regions):
+                centre_list[i] = centre_region.centre
+            
+            other_centres = np.zeros((len(other_regions), 2))
+            for i, other_region in other_regions:
+                other_centres[i] = other_region.centre
+
+            both_centres = np.hstack((centre_list, other_centres)) if other_centres.shape[0] > 0 else centre_list
+
+            d = euclidean_distance(both_centres, S[-1, :]) # could maybe do in one loop 
+            d = np.min(d)
+
+            if d <= 0:
+                raise Exception("Should not get here")
+            
+            c_r = np.sqrt((proportion_to_attain - allocation)/ np.pi)
+            r = np.random.rand(1)*np.minimum(d, c_r)
+            region.radius = r 
+            S = S[:-1, :] # remove last row
+
+            d = euclidean_distance(S, region.centre) # constrainedCentres(end,:) == region.centre? should be?
+            I = d > r
+            S = S[I,:] # Remove covered points
+            covered_count = 1 + I.shape[0]
+            allocation += covered_count/self.nm
+
+        return np.array(regions) # , S # Does it need to return S, does any method use it
 
     
     def check_region(self, regions, x, include_boundary):
@@ -1014,19 +1033,19 @@ if __name__=="__main__":
         pareto_set_type,
         constraint_type, 0, False, False, 0, 10000
     )
+
+    my_complex_instance = DBMOPP(3,10,3,3,2,0.3,2,8,2,False, True, 0.2)
+
     print("Initializing works!")
     x = np.random.rand(1, n_variables)
     print(problem.evaluate(x))
     moproblem = problem.generate_problem()
 
-    # wont work because x will be converted to 2d array and then some of the indexing fail. 
-    # Fix: Either check for 2d or modify the existing code to use the same kind of arrays as desdeo
+    print(moproblem.evaluate(x)) 
 
-    # print(moproblem.evaluate(x)) 
-
-    problem.plot_problem_instance()
-    problem.plot_pareto_set_members(100)
-    problem.plot_landscape_for_single_objective(0, 100)
+    my_complex_instance.plot_problem_instance()
+    my_complex_instance.plot_pareto_set_members(100)
+    my_complex_instance.plot_landscape_for_single_objective(0, 100)
 
     # show all plots
     plt.show()
